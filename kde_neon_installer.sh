@@ -531,7 +531,6 @@ main() {
     fi
   fi
   
-  # Run main installation
   main_installation
   
   log "INFO" "KDE Neon Automated Installer completed"
