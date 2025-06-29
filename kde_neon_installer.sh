@@ -481,7 +481,7 @@ main_installation() {
   log "INFO" "System is ready to reboot"
 }
 
-# Main script entry point with argument parsing and installation flow
+# Script entry point with argument parsing and installation flow
 main() {
   # Initialize constants
   local script_dir
@@ -537,7 +537,6 @@ main() {
   log "INFO" "KDE Neon Automated Installer completed"
 }
 
-# Script entry point
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   main "$@"
 fi
