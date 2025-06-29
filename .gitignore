@@ -8,3 +8,4 @@ logs/
 .idea/
 *.iml
 /troubleshooting_ide_warnings.md
+/install.conf

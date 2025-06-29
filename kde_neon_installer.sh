@@ -313,6 +313,7 @@ select_target_drive() {
     done
 
     if [[ "$dry_run" == "true" ]]; then
+      local target_drive
       target_drive="${drives[0]}"
       log "INFO" "[DRY-RUN] Using first drive: $target_drive"
     else
