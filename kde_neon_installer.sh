@@ -165,7 +165,6 @@ check_network() {
 enumerate_nvme_drives() {
   local drives=()
   local drive
-  log "INFO" "Enumerating NVMe drives..."
 
   for drive in /dev/nvme*n*; do
     if [[ -b "$drive" && ! "$drive" =~ nvme[0-9]+n[0-9]+p[0-9]+ ]]; then
@@ -291,6 +290,7 @@ detect_windows() {
 
 # Interactive drive selection with Windows detection and safety checks
 select_target_drive() {
+  log "INFO" "Enumerating NVMe drives..."
   local drives
   mapfile -t drives < <(enumerate_nvme_drives)
 
