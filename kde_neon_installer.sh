@@ -195,28 +195,95 @@ detect_windows() {
   local drive="$1"
   log "INFO" "Checking for Windows installation on $drive"
 
-  # Check for Windows Boot Manager
+  # Method 1: Check for Windows Boot Manager in EFI
   if efibootmgr | grep -i "Windows Boot Manager" &>/dev/null; then
     log "WARN" "Windows Boot Manager detected in EFI"
     return 0
   fi
 
-  # Check partitions for Windows signatures
+  # Method 2: Check for Microsoft EFI entries
+  if efibootmgr | grep -i "Microsoft" &>/dev/null; then
+    log "WARN" "Microsoft EFI entry detected"
+    return 0
+  fi
+
+  # Method 3: Check partitions for Windows signatures
   local partition
   for partition in "${drive}"p*; do
     if [[ -b "$partition" ]]; then
       local fs_type
       local label
+      local uuid
       fs_type=$(blkid -o value -s TYPE "$partition" 2>/dev/null || echo "")
       label=$(blkid -o value -s LABEL "$partition" 2>/dev/null || echo "")
+      uuid=$(blkid -o value -s UUID "$partition" 2>/dev/null || echo "")
 
-      if [[ "$fs_type" == "ntfs" ]] || [[ "$label" =~ ^(Windows|System|Recovery) ]]; then
-        log "WARN" "Windows partition detected: $partition ($fs_type, $label)"
+      # Method 4: Check for Windows-specific filesystem signatures
+      if [[ "$fs_type" == "ntfs" ]]; then
+        # Mount temporarily to check for Windows directories
+        local temp_mount="/tmp/win_check_$$"
+        mkdir -p "$temp_mount"
+        if mount -t ntfs -o ro "$partition" "$temp_mount" 2>/dev/null; then
+          # Check for Windows directory structure
+          if [[ -d "$temp_mount/Windows" ]] || [[ -d "$temp_mount/windows" ]] || 
+             [[ -f "$temp_mount/bootmgr" ]] || [[ -f "$temp_mount/BOOTMGR" ]] ||
+             [[ -d "$temp_mount/System Volume Information" ]]; then
+            umount "$temp_mount" 2>/dev/null
+            rmdir "$temp_mount" 2>/dev/null
+            log "WARN" "Windows installation detected on $partition (NTFS with Windows directories)"
+            return 0
+          fi
+          umount "$temp_mount" 2>/dev/null
+        fi
+        rmdir "$temp_mount" 2>/dev/null
+        
+        # Even if we can't mount, NTFS is suspicious
+        log "WARN" "NTFS partition detected: $partition (potential Windows)"
         return 0
+      fi
+
+      # Method 5: Check for Windows-specific labels
+      if [[ "$label" =~ ^(Windows|System|Recovery|Microsoft|EFI|BOOT)$ ]]; then
+        log "WARN" "Windows-related partition label detected: $partition ($label)"
+        return 0
+      fi
+
+      # Method 6: Check for EFI system partition with Windows content
+      if [[ "$fs_type" == "vfat" ]] && [[ "$label" =~ ^(EFI|SYSTEM)$ ]]; then
+        local temp_mount="/tmp/efi_check_$$"
+        mkdir -p "$temp_mount"
+        if mount -t vfat -o ro "$partition" "$temp_mount" 2>/dev/null; then
+          # Check for Microsoft boot files in EFI partition
+          if [[ -d "$temp_mount/EFI/Microsoft" ]] || [[ -d "$temp_mount/EFI/Boot" ]]; then
+            umount "$temp_mount" 2>/dev/null
+            rmdir "$temp_mount" 2>/dev/null
+            log "WARN" "Windows EFI boot files detected on $partition"
+            return 0
+          fi
+          umount "$temp_mount" 2>/dev/null
+        fi
+        rmdir "$temp_mount" 2>/dev/null
       fi
     fi
   done
 
+  # Method 7: Check for Windows Registry hives or hiberfil.sys
+  for partition in "${drive}"p*; do
+    if [[ -b "$partition" ]]; then
+      # Use file command to check for Windows-specific file signatures
+      if command -v file >/dev/null 2>&1; then
+        # Check for NTFS volume with Windows boot sector
+        local fs_sig
+        fs_sig=$(file -s "$partition" 2>/dev/null | grep -i "ntfs\|windows\|microsoft")
+        if [[ -n "$fs_sig" ]]; then
+          log "WARN" "Windows filesystem signature detected on $partition"
+          return 0
+        fi
+      fi
+    fi
+  done
+
+  log "INFO" "No Windows installation detected on $drive"
   return 1
 }
 
