@@ -7,28 +7,30 @@
 
 set -euo pipefail
 
-# Script configuration
+# Constants
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="${SCRIPT_DIR}/install.conf"
-DEFAULT_LOG_FILE="${SCRIPT_DIR}/kde-install-$(date +%Y%m%d-%H%M%S).log"
+readonly SCRIPT_DIR
+readonly DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/install.conf"
+readonly DEFAULT_INSTALL_ROOT="/target"
 
-# Global variables
-DRY_RUN=false
-LOG_FILE="$DEFAULT_LOG_FILE"
-CUSTOM_CONFIG=""
-FORCE_MODE=false
-DEBUG=false
-TARGET_DRIVE=""
-INSTALL_ROOT="/target"
+# Global variables (set in main)
+dry_run=false
+log_file=""
+custom_config=""
+force_mode=false
+debug=false
+target_drive=""
+install_root="$DEFAULT_INSTALL_ROOT"
 
 # Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m' # No Color
 
-# Logging functions
+# Log messages with timestamp and color coding
+# Arguments: level, message
 log() {
     local level="$1"
     shift
@@ -36,7 +38,7 @@ log() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
-    echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
+    echo "[$timestamp] [$level] $message" | tee -a "$log_file"
     
     case "$level" in
         "ERROR")
@@ -49,17 +51,20 @@ log() {
             echo -e "${GREEN}INFO: $message${NC}"
             ;;
         "DEBUG")
-            [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}DEBUG: $message${NC}"
+            [[ "$debug" == "true" ]] && echo -e "${BLUE}DEBUG: $message${NC}"
             ;;
     esac
 }
 
+# Exit with error message
+# Arguments: error_message
 error_exit() {
     log "ERROR" "$1"
     exit 1
 }
 
-# Command execution wrapper
+# Execute command with logging and dry-run support
+# Arguments: command, description
 execute_cmd() {
     local cmd="$1"
     local description="${2:-}"
@@ -70,17 +75,17 @@ execute_cmd() {
     
     log "DEBUG" "Executing: $cmd"
     
-    if [[ "$DRY_RUN" == "true" ]]; then
+    if [[ "$dry_run" == "true" ]]; then
         log "INFO" "[DRY-RUN] Would execute: $cmd"
         return 0
     fi
     
-    if ! eval "$cmd" 2>&1 | tee -a "$LOG_FILE"; then
+    if ! eval "$cmd" 2>&1 | tee -a "$log_file"; then
         error_exit "Command failed: $cmd"
     fi
 }
 
-# Help function
+# Display help information
 show_help() {
     cat << EOF
 KDE Neon Automated Installer
@@ -104,27 +109,28 @@ EOF
 }
 
 # Parse command line arguments
+# Arguments: all command line arguments
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --dry-run)
-                DRY_RUN=true
+                dry_run=true
                 shift
                 ;;
             --log-path)
-                LOG_FILE="$2"
+                log_file="$2"
                 shift 2
                 ;;
             --config)
-                CUSTOM_CONFIG="$2"
+                custom_config="$2"
                 shift 2
                 ;;
             --force)
-                FORCE_MODE=true
+                force_mode=true
                 shift
                 ;;
             --debug)
-                DEBUG=true
+                debug=true
                 shift
                 ;;
             --help)
@@ -138,13 +144,14 @@ parse_arguments() {
     done
 }
 
-# System validation functions
+# Check if running as root user
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         error_exit "This script must be run as root"
     fi
 }
 
+# Verify UEFI boot mode
 check_uefi() {
     if [[ ! -d /sys/firmware/efi ]]; then
         error_exit "UEFI boot mode required. Legacy BIOS not supported."
@@ -152,6 +159,7 @@ check_uefi() {
     log "INFO" "UEFI boot mode confirmed"
 }
 
+# Test network connectivity
 check_network() {
     if ! ping -c 1 8.8.8.8 &>/dev/null; then
         error_exit "Network connectivity required for installation"
@@ -240,8 +248,8 @@ select_target_drive() {
             echo "  $((i+1)). $drive - ${size_gb}GB - $model"
         done
         
-        if [[ "$DRY_RUN" == "true" ]]; then
-            TARGET_DRIVE="${drives[0]}"
+        if [[ "$dry_run" == "true" ]]; then
+            target_drive="${drives[0]}"
             log "INFO" "[DRY-RUN] Using first drive: $TARGET_DRIVE"
         else
             read -r -p "Select drive (1-${#drives[@]}): " selection
@@ -254,9 +262,9 @@ select_target_drive() {
     fi
     
     # Windows detection and safety check
-    if detect_windows "$TARGET_DRIVE" && [[ "$FORCE_MODE" == "false" ]]; then
-        log "WARN" "Windows installation detected on $TARGET_DRIVE"
-        if [[ "$DRY_RUN" == "false" ]]; then
+    if detect_windows "$target_drive" && [[ "$force_mode" == "false" ]]; then
+        log "WARN" "Windows installation detected on $target_drive"
+        if [[ "$dry_run" == "false" ]]; then
             read -r -p "Continue with installation? This may affect Windows boot. (y/N): " confirm
             if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
                 error_exit "Installation cancelled by user"
@@ -269,7 +277,7 @@ select_target_drive() {
 
 # Configuration management
 load_configuration() {
-    local config_file="${CUSTOM_CONFIG:-$CONFIG_FILE}"
+    local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
     
     if [[ -f "$config_file" ]]; then
         log "INFO" "Loading configuration from: $config_file"
@@ -282,7 +290,7 @@ load_configuration() {
 }
 
 save_configuration() {
-    local config_file="${CUSTOM_CONFIG:-$CONFIG_FILE}"
+    local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
     
     log "INFO" "Saving configuration to: $config_file"
     
@@ -308,7 +316,7 @@ ROOT_FS="${ROOT_FS:-ext4}"
 NETWORK_CONFIG="${NETWORK_CONFIG:-dhcp}"
 EOF
     
-    if [[ "$DRY_RUN" == "false" ]]; then
+    if [[ "$dry_run" == "false" ]]; then
         chmod 600 "$config_file"
     fi
 }
@@ -369,27 +377,27 @@ phase3_system_installation() {
     local efi_part="${drive}p1"
     
     # Create mount points
-    execute_cmd "mkdir -p $INSTALL_ROOT" "Creating installation root"
-    execute_cmd "mkdir -p $INSTALL_ROOT/boot/efi" "Creating EFI mount point"
+    execute_cmd "mkdir -p $install_root" "Creating installation root"
+    execute_cmd "mkdir -p $install_root/boot/efi" "Creating EFI mount point"
     
     # Mount partitions
-    execute_cmd "mount $root_part $INSTALL_ROOT" "Mounting root partition"
-    execute_cmd "mount $efi_part $INSTALL_ROOT/boot/efi" "Mounting EFI partition"
+    execute_cmd "mount $root_part $install_root" "Mounting root partition"
+    execute_cmd "mount $efi_part $install_root/boot/efi" "Mounting EFI partition"
     
     # Copy system files (this would be extracted from the live ISO)
     log "INFO" "Copying system files (this will take several minutes)..."
-    execute_cmd "rsync -av --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/mnt --exclude=/media --exclude=/lost+found / $INSTALL_ROOT/" "Copying system files"
+    execute_cmd "rsync -av --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/mnt --exclude=/media --exclude=/lost+found / $install_root/" "Copying system files"
     
     # Create essential directories
     for dir in proc sys dev run tmp; do
-        execute_cmd "mkdir -p $INSTALL_ROOT/$dir" "Creating /$dir directory"
+        execute_cmd "mkdir -p $install_root/$dir" "Creating /$dir directory"
     done
     
     # Create swap file
-    local swap_size="${SWAP_SIZE:-4G}"
-    execute_cmd "fallocate -l $swap_size $INSTALL_ROOT/swapfile" "Creating swap file"
-    execute_cmd "chmod 600 $INSTALL_ROOT/swapfile" "Setting swap file permissions"
-    execute_cmd "mkswap $INSTALL_ROOT/swapfile" "Formatting swap file"
+    local swap_file_size="${swap_size:-4G}"
+    execute_cmd "fallocate -l $swap_file_size $install_root/swapfile" "Creating swap file"
+    execute_cmd "chmod 600 $install_root/swapfile" "Setting swap file permissions"
+    execute_cmd "mkswap $install_root/swapfile" "Formatting swap file"
     
     log "INFO" "Phase 3 completed successfully"
 }
@@ -400,16 +408,16 @@ phase4_bootloader_configuration() {
     local drive="$TARGET_DRIVE"
     
     # Mount essential filesystems in chroot
-    execute_cmd "mount --bind /proc $INSTALL_ROOT/proc" "Binding /proc"
-    execute_cmd "mount --bind /sys $INSTALL_ROOT/sys" "Binding /sys"
-    execute_cmd "mount --bind /dev $INSTALL_ROOT/dev" "Binding /dev"
-    execute_cmd "mount --bind /run $INSTALL_ROOT/run" "Binding /run"
+    execute_cmd "mount --bind /proc $install_root/proc" "Binding /proc"
+    execute_cmd "mount --bind /sys $install_root/sys" "Binding /sys"
+    execute_cmd "mount --bind /dev $install_root/dev" "Binding /dev"
+    execute_cmd "mount --bind /run $install_root/run" "Binding /run"
     
     # Install GRUB
-    execute_cmd "chroot $INSTALL_ROOT grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id='KDE Neon' $drive" "Installing GRUB bootloader"
+    execute_cmd "chroot $install_root grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id='KDE Neon' $drive" "Installing GRUB bootloader"
     
     # Generate GRUB configuration
-    execute_cmd "chroot $INSTALL_ROOT update-grub" "Generating GRUB configuration"
+    execute_cmd "chroot $install_root update-grub" "Generating GRUB configuration"
     
     # Update fstab
     local root_uuid
@@ -417,7 +425,7 @@ phase4_bootloader_configuration() {
     root_uuid=$(blkid -s UUID -o value "${drive}p2")
     efi_uuid=$(blkid -s UUID -o value "${drive}p1")
     
-    cat > "$INSTALL_ROOT/etc/fstab" << EOF
+    cat > "$install_root/etc/fstab" << EOF
 # /etc/fstab: static file system information
 UUID=$root_uuid / ext4 defaults 0 1
 UUID=$efi_uuid /boot/efi vfat defaults 0 2
@@ -431,32 +439,32 @@ phase5_system_configuration() {
     log "INFO" "=== Phase 5: System Configuration ==="
     
     # Set timezone to local time
-    execute_cmd "chroot $INSTALL_ROOT timedatectl set-local-rtc 1" "Setting system clock to local time"
+    execute_cmd "chroot $install_root timedatectl set-local-rtc 1" "Setting system clock to local time"
     
     # Configure locale
     local locale="${LOCALE:-en_US.UTF-8}"
-    execute_cmd "chroot $INSTALL_ROOT locale-gen $locale" "Generating locale"
-    execute_cmd "chroot $INSTALL_ROOT update-locale LANG=$locale" "Setting system locale"
+    execute_cmd "chroot $install_root locale-gen $locale" "Generating locale"
+    execute_cmd "chroot $install_root update-locale LANG=$locale" "Setting system locale"
     
     # Set hostname
     local hostname="${HOSTNAME:-kde-neon}"
-    execute_cmd "echo $hostname > $INSTALL_ROOT/etc/hostname" "Setting hostname"
+    execute_cmd "echo $hostname > $install_root/etc/hostname" "Setting hostname"
     
     # Remove live system packages
-    execute_cmd "chroot $INSTALL_ROOT apt-get --purge -q -y remove calamares neon-live casper" "Removing live system packages"
-    execute_cmd "chroot $INSTALL_ROOT apt-get --purge -q -y autoremove" "Cleaning up packages"
+    execute_cmd "chroot $install_root apt-get --purge -q -y remove calamares neon-live casper" "Removing live system packages"
+    execute_cmd "chroot $install_root apt-get --purge -q -y autoremove" "Cleaning up packages"
     
     # KDE Neon specific configurations
     if [[ -x "/usr/bin/calamares-l10n-helper" ]]; then
-        execute_cmd "chroot $INSTALL_ROOT /usr/bin/calamares-l10n-helper" "Configuring localization"
+        execute_cmd "chroot $install_root /usr/bin/calamares-l10n-helper" "Configuring localization"
     fi
     
     # Update initramfs
-    execute_cmd "chroot $INSTALL_ROOT update-initramfs -u" "Updating initramfs"
+    execute_cmd "chroot $install_root update-initramfs -u" "Updating initramfs"
     
     # Unmount chroot filesystems
-    execute_cmd "umount $INSTALL_ROOT/proc $INSTALL_ROOT/sys $INSTALL_ROOT/dev $INSTALL_ROOT/run" "Unmounting chroot filesystems"
-    execute_cmd "umount $INSTALL_ROOT/boot/efi $INSTALL_ROOT" "Unmounting installation partitions"
+    execute_cmd "umount $install_root/proc $install_root/sys $install_root/dev $install_root/run" "Unmounting chroot filesystems"
+    execute_cmd "umount $install_root/boot/efi $install_root" "Unmounting installation partitions"
     
     log "INFO" "Phase 5 completed successfully"
 }
@@ -465,7 +473,7 @@ phase5_system_configuration() {
 main_installation() {
     log "INFO" "Starting KDE Neon installation process"
     log "INFO" "Target drive: $TARGET_DRIVE"
-    log "INFO" "Dry run mode: $DRY_RUN"
+    log "INFO" "Dry run mode: $dry_run"
     
     phase1_system_preparation
     phase2_partitioning
@@ -479,11 +487,16 @@ main_installation() {
 
 # Main script execution
 main() {
+    # Set default log file if not specified
+    if [[ -z "$log_file" ]]; then
+        log_file="${SCRIPT_DIR}/kde-install-$(date +%Y%m%d-%H%M%S).log"
+    fi
+    
     # Initialize logging
-    mkdir -p "$(dirname "$LOG_FILE")"
+    mkdir -p "$(dirname "$log_file")"
     
     log "INFO" "KDE Neon Automated Installer started"
-    log "INFO" "Log file: $LOG_FILE"
+    log "INFO" "Log file: $log_file"
     
     # Parse command line arguments
     parse_arguments "$@"
@@ -498,11 +511,11 @@ main() {
     save_configuration
     
     # Confirm installation
-    if [[ "$DRY_RUN" == "false" ]]; then
+    if [[ "$dry_run" == "false" ]]; then
         echo -e "\n${YELLOW}Installation Summary:${NC}"
-        echo -e "Target Drive: ${GREEN}$TARGET_DRIVE${NC}"
-        echo -e "Installation Root: ${GREEN}$INSTALL_ROOT${NC}"
-        echo -e "Log File: ${GREEN}$LOG_FILE${NC}"
+        echo -e "Target Drive: ${GREEN}$target_drive${NC}"
+        echo -e "Installation Root: ${GREEN}$install_root${NC}"
+        echo -e "Log File: ${GREEN}$log_file${NC}"
         echo
         
         read -r -p "Proceed with installation? (y/N): " confirm
