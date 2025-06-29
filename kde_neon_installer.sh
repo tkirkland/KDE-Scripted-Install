@@ -33,7 +33,8 @@ log() {
     local level="$1"
     shift
     local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
     echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
     
@@ -167,11 +168,13 @@ enumerate_nvme_drives() {
     for drive in /dev/nvme*n*; do
         if [[ -b "$drive" && ! "$drive" =~ nvme[0-9]+n[0-9]+p[0-9]+ ]]; then
             # Check if it's an internal drive (not USB)
-            local drive_name=$(basename "$drive")
+            local drive_name
+            drive_name=$(basename "$drive")
             local sys_path="/sys/block/$drive_name"
             
             if [[ -e "$sys_path" ]]; then
-                local removable=$(cat "$sys_path/removable" 2>/dev/null || echo "0")
+                local removable
+                removable=$(cat "$sys_path/removable" 2>/dev/null || echo "0")
                 if [[ "$removable" == "0" ]]; then
                     drives+=("$drive")
                     log "DEBUG" "Found internal NVMe drive: $drive"
@@ -200,8 +203,10 @@ detect_windows() {
     # Check partitions for Windows signatures
     for partition in "${drive}"p*; do
         if [[ -b "$partition" ]]; then
-            local fs_type=$(blkid -o value -s TYPE "$partition" 2>/dev/null || echo "")
-            local label=$(blkid -o value -s LABEL "$partition" 2>/dev/null || echo "")
+            local fs_type
+            local label
+            fs_type=$(blkid -o value -s TYPE "$partition" 2>/dev/null || echo "")
+            label=$(blkid -o value -s LABEL "$partition" 2>/dev/null || echo "")
             
             if [[ "$fs_type" == "ntfs" ]] || [[ "$label" =~ ^(Windows|System|Recovery) ]]; then
                 log "WARN" "Windows partition detected: $partition ($fs_type, $label)"
@@ -215,7 +220,8 @@ detect_windows() {
 
 # Drive selection interface
 select_target_drive() {
-    local drives=($(enumerate_nvme_drives))
+    local drives
+    mapfile -t drives < <(enumerate_nvme_drives)
     
     if [[ ${#drives[@]} -eq 1 ]]; then
         TARGET_DRIVE="${drives[0]}"
@@ -224,9 +230,12 @@ select_target_drive() {
         log "INFO" "Multiple drives detected:"
         for i in "${!drives[@]}"; do
             local drive="${drives[$i]}"
-            local size=$(lsblk -b -d -o SIZE "$drive" 2>/dev/null | tail -n1)
-            local size_gb=$((size / 1024 / 1024 / 1024))
-            local model=$(lsblk -d -o MODEL "$drive" 2>/dev/null | tail -n1)
+            local size
+            local size_gb
+            local model
+            size=$(lsblk -b -d -o SIZE "$drive" 2>/dev/null | tail -n1)
+            size_gb=$((size / 1024 / 1024 / 1024))
+            model=$(lsblk -d -o MODEL "$drive" 2>/dev/null | tail -n1)
             
             echo "  $((i+1)). $drive - ${size_gb}GB - $model"
         done
@@ -235,7 +244,7 @@ select_target_drive() {
             TARGET_DRIVE="${drives[0]}"
             log "INFO" "[DRY-RUN] Using first drive: $TARGET_DRIVE"
         else
-            read -p "Select drive (1-${#drives[@]}): " selection
+            read -r -p "Select drive (1-${#drives[@]}): " selection
             if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le ${#drives[@]} ]]; then
                 TARGET_DRIVE="${drives[$((selection-1))]}"
             else
@@ -248,7 +257,7 @@ select_target_drive() {
     if detect_windows "$TARGET_DRIVE" && [[ "$FORCE_MODE" == "false" ]]; then
         log "WARN" "Windows installation detected on $TARGET_DRIVE"
         if [[ "$DRY_RUN" == "false" ]]; then
-            read -p "Continue with installation? This may affect Windows boot. (y/N): " confirm
+            read -r -p "Continue with installation? This may affect Windows boot. (y/N): " confirm
             if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
                 error_exit "Installation cancelled by user"
             fi
@@ -264,6 +273,7 @@ load_configuration() {
     
     if [[ -f "$config_file" ]]; then
         log "INFO" "Loading configuration from: $config_file"
+        # shellcheck source=/dev/null
         source "$config_file"
     else
         log "INFO" "No existing configuration found, will prompt for settings"
@@ -402,8 +412,10 @@ phase4_bootloader_configuration() {
     execute_cmd "chroot $INSTALL_ROOT update-grub" "Generating GRUB configuration"
     
     # Update fstab
-    local root_uuid=$(blkid -s UUID -o value "${drive}p2")
-    local efi_uuid=$(blkid -s UUID -o value "${drive}p1")
+    local root_uuid
+    local efi_uuid
+    root_uuid=$(blkid -s UUID -o value "${drive}p2")
+    efi_uuid=$(blkid -s UUID -o value "${drive}p1")
     
     cat > "$INSTALL_ROOT/etc/fstab" << EOF
 # /etc/fstab: static file system information
@@ -493,7 +505,7 @@ main() {
         echo -e "Log File: ${GREEN}$LOG_FILE${NC}"
         echo
         
-        read -p "Proceed with installation? (y/N): " confirm
+        read -r -p "Proceed with installation? (y/N): " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             log "INFO" "Installation cancelled by user"
             exit 0
