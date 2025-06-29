@@ -30,7 +30,6 @@ readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
 # Log messages with timestamp and color coding
-# Arguments: level, message
 log() {
     local level="$1"
     shift
@@ -56,15 +55,13 @@ log() {
     esac
 }
 
-# Exit with error message
-# Arguments: error_message
+# Exit with error message and status code 1
 error_exit() {
     log "ERROR" "$1"
     exit 1
 }
 
 # Execute command with logging and dry-run support
-# Arguments: command, description
 execute_cmd() {
     local cmd="$1"
     local description="${2:-}"
@@ -85,7 +82,7 @@ execute_cmd() {
     fi
 }
 
-# Display help information
+# Display help information and usage examples
 show_help() {
     cat << EOF
 KDE Neon Automated Installer
@@ -108,8 +105,7 @@ Examples:
 EOF
 }
 
-# Parse command line arguments
-# Arguments: all command line arguments
+# Parse command line arguments and set global variables
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -144,14 +140,14 @@ parse_arguments() {
     done
 }
 
-# Check if running as root user
+# Check if running as root user (required for installation)
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         error_exit "This script must be run as root"
     fi
 }
 
-# Verify UEFI boot mode
+# Verify UEFI boot mode is enabled
 check_uefi() {
     if [[ ! -d /sys/firmware/efi ]]; then
         error_exit "UEFI boot mode required. Legacy BIOS not supported."
@@ -159,7 +155,7 @@ check_uefi() {
     log "INFO" "UEFI boot mode confirmed"
 }
 
-# Test network connectivity
+# Test network connectivity (required for package downloads)
 check_network() {
     if ! ping -c 1 8.8.8.8 &>/dev/null; then
         error_exit "Network connectivity required for installation"
@@ -167,7 +163,7 @@ check_network() {
     log "INFO" "Network connectivity confirmed"
 }
 
-# Drive enumeration and filtering
+# Find and list available internal NVMe drives
 enumerate_nvme_drives() {
     local drives=()
     
@@ -198,6 +194,7 @@ enumerate_nvme_drives() {
     printf '%s\n' "${drives[@]}"
 }
 
+# Detect Windows installation on specified drive for dual-boot safety
 detect_windows() {
     local drive="$1"
     log "INFO" "Checking for Windows installation on $drive"
@@ -226,14 +223,14 @@ detect_windows() {
     return 1
 }
 
-# Drive selection interface
+# Interactive drive selection with Windows detection and safety checks
 select_target_drive() {
     local drives
     mapfile -t drives < <(enumerate_nvme_drives)
     
     if [[ ${#drives[@]} -eq 1 ]]; then
-        TARGET_DRIVE="${drives[0]}"
-        log "INFO" "Single drive detected: $TARGET_DRIVE"
+        target_drive="${drives[0]}"
+        log "INFO" "Single drive detected: $target_drive"
     else
         log "INFO" "Multiple drives detected:"
         for i in "${!drives[@]}"; do
@@ -250,11 +247,11 @@ select_target_drive() {
         
         if [[ "$dry_run" == "true" ]]; then
             target_drive="${drives[0]}"
-            log "INFO" "[DRY-RUN] Using first drive: $TARGET_DRIVE"
+            log "INFO" "[DRY-RUN] Using first drive: $target_drive"
         else
             read -r -p "Select drive (1-${#drives[@]}): " selection
             if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le ${#drives[@]} ]]; then
-                TARGET_DRIVE="${drives[$((selection-1))]}"
+                target_drive="${drives[$((selection-1))]}"
             else
                 error_exit "Invalid selection"
             fi
@@ -272,10 +269,10 @@ select_target_drive() {
         fi
     fi
     
-    log "INFO" "Target drive selected: $TARGET_DRIVE"
+    log "INFO" "Target drive selected: $target_drive"
 }
 
-# Configuration management
+# Load configuration from file if it exists
 load_configuration() {
     local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
     
@@ -289,6 +286,7 @@ load_configuration() {
     fi
 }
 
+# Save current installation configuration to file
 save_configuration() {
     local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
     
@@ -299,7 +297,7 @@ save_configuration() {
 # Generated: $(date)
 
 # System settings
-TARGET_DRIVE="$TARGET_DRIVE"
+TARGET_DRIVE="$target_drive"
 LOCALE="${LOCALE:-en_US.UTF-8}"
 TIMEZONE="${TIMEZONE:-UTC}"
 KEYBOARD_LAYOUT="${KEYBOARD_LAYOUT:-us}"
@@ -321,7 +319,7 @@ EOF
     fi
 }
 
-# Installation phase functions
+# Phase 1: System preparation, validation, and package installation
 phase1_system_preparation() {
     log "INFO" "=== Phase 1: System Preparation ==="
     
@@ -338,10 +336,11 @@ phase1_system_preparation() {
     log "INFO" "Phase 1 completed successfully"
 }
 
+# Phase 2: Create GPT partitions and format filesystems
 phase2_partitioning() {
     log "INFO" "=== Phase 2: Drive Partitioning ==="
     
-    local drive="$TARGET_DRIVE"
+    local drive="$target_drive"
     
     # Unmount any existing partitions
     execute_cmd "umount ${drive}p* 2>/dev/null || true" "Unmounting existing partitions"
@@ -369,10 +368,11 @@ phase2_partitioning() {
     log "INFO" "Phase 2 completed successfully"
 }
 
+# Phase 3: Mount filesystems, copy system files, and create swap
 phase3_system_installation() {
     log "INFO" "=== Phase 3: System Installation ==="
     
-    local drive="$TARGET_DRIVE"
+    local drive="$target_drive"
     local root_part="${drive}p2"
     local efi_part="${drive}p1"
     
@@ -402,10 +402,11 @@ phase3_system_installation() {
     log "INFO" "Phase 3 completed successfully"
 }
 
+# Phase 4: Install GRUB bootloader and configure fstab
 phase4_bootloader_configuration() {
     log "INFO" "=== Phase 4: Bootloader Configuration ==="
     
-    local drive="$TARGET_DRIVE"
+    local drive="$target_drive"
     
     # Mount essential filesystems in chroot
     execute_cmd "mount --bind /proc $install_root/proc" "Binding /proc"
@@ -435,6 +436,7 @@ EOF
     log "INFO" "Phase 4 completed successfully"
 }
 
+# Phase 5: Configure locale, hostname, and cleanup live packages
 phase5_system_configuration() {
     log "INFO" "=== Phase 5: System Configuration ==="
     
@@ -469,10 +471,10 @@ phase5_system_configuration() {
     log "INFO" "Phase 5 completed successfully"
 }
 
-# Main installation function
+# Execute all installation phases in sequence
 main_installation() {
     log "INFO" "Starting KDE Neon installation process"
-    log "INFO" "Target drive: $TARGET_DRIVE"
+    log "INFO" "Target drive: $target_drive"
     log "INFO" "Dry run mode: $dry_run"
     
     phase1_system_preparation
@@ -485,7 +487,7 @@ main_installation() {
     log "INFO" "System is ready to reboot"
 }
 
-# Main script execution
+# Main script entry point with argument parsing and installation flow
 main() {
     # Set default log file if not specified
     if [[ -z "$log_file" ]]; then
