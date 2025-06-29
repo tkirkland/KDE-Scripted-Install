@@ -498,7 +498,7 @@ main() {
     
     # Set default log file if not specified
     if [[ -z "$log_file" ]]; then
-        log_file="${SCRIPT_DIR}/kde-install-$(date +%Y%m%d-%H%M%S).log"
+        log_file="${SCRIPT_DIR}/logs/kde-install-$(date +%Y%m%d-%H%M%S).log"
     fi
     
     # Initialize logging

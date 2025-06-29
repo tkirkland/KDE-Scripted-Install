@@ -1,5 +1,9 @@
 /session.log
 
+# Log files
+logs/
+*.log
+
 # IntelliJ IDEA
 .idea/
 *.iml
