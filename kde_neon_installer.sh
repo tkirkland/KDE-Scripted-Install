@@ -16,7 +16,14 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-
+# Global variables (initialized in main)
+dry_run=false
+log_file=""
+custom_config=""
+force_mode=false
+debug=false
+target_drive=""
+install_root=""
 
 # Log messages with timestamp and color coding
 log() {
@@ -66,7 +73,7 @@ execute_cmd() {
     return 0
   fi
 
-  if ! eval "$cmd" 2>&1 | tee -a "$log_file"; then
+  if ! bash -c "$cmd" 2>&1 | tee -a "$log_file"; then
     error_exit "Command failed: $cmd"
   fi
 }
@@ -266,7 +273,7 @@ select_target_drive() {
 
 # Load configuration from file if it exists
 load_configuration() {
-  local config_file="${custom_config:-$default_config_file}"
+  local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
 
   if [[ -f "$config_file" ]]; then
     log "INFO" "Loading configuration from: $config_file"
@@ -280,7 +287,7 @@ load_configuration() {
 
 # Save the current installation configuration to file
 save_configuration() {
-  local config_file="${custom_config:-$default_config_file}"
+  local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
 
   log "INFO" "Saving configuration to: $config_file"
 
@@ -492,12 +499,6 @@ main() {
   readonly DEFAULT_INSTALL_ROOT="/target"
 
   # Initialize global variables
-  dry_run=false
-  debug=false
-  force_mode=false
-  log_file=""
-  custom_config=""
-  target_drive=""
   install_root="$DEFAULT_INSTALL_ROOT"
 
   # Parse command line arguments first
