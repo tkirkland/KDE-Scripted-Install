@@ -14,14 +14,7 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-# Global variables (initialized in main)
-dry_run=false
-log_file=""
-custom_config=""
-force_mode=false
-debug=false
-target_drive=""
-install_root=""
+
 
 # Log messages with timestamp and color coding
 log() {
@@ -160,9 +153,9 @@ check_network() {
 # Find and list available internal NVMe drives
 enumerate_nvme_drives() {
   local drives=()
-  
+  local drive
   log "INFO" "Enumerating NVMe drives..."
-  
+
   for drive in /dev/nvme*n*; do
     if [[ -b "$drive" && ! "$drive" =~ nvme[0-9]+n[0-9]+p[0-9]+ ]]; then
       # Check if it's an internal drive (not USB)
@@ -200,6 +193,7 @@ detect_windows() {
   fi
   
   # Check partitions for Windows signatures
+  local partition
   for partition in "${drive}"p*; do
     if [[ -b "$partition" ]]; then
       local fs_type
@@ -227,6 +221,7 @@ select_target_drive() {
     log "INFO" "Single drive detected: $target_drive"
   else
     log "INFO" "Multiple drives detected:"
+    local i
     for i in "${!drives[@]}"; do
       local drive="${drives[$i]}"
       local size
@@ -243,6 +238,7 @@ select_target_drive() {
       target_drive="${drives[0]}"
       log "INFO" "[DRY-RUN] Using first drive: $target_drive"
     else
+      local selection
       read -r -p "Select drive (1-${#drives[@]}): " selection
       if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le ${#drives[@]} ]]; then
         target_drive="${drives[$((selection-1))]}"
@@ -280,7 +276,7 @@ load_configuration() {
   fi
 }
 
-# Save current installation configuration to file
+# Save the current installation configuration to file
 save_configuration() {
   local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
   
@@ -346,10 +342,10 @@ phase2_partitioning() {
   execute_cmd "parted -s $drive mkpart primary fat32 1MiB 513MiB" "Creating EFI system partition"
   execute_cmd "parted -s $drive set 1 esp on" "Setting EFI system partition flag"
   
-  # Create root partition (remaining space)
+  # Create a root partition (remaining space)
   execute_cmd "parted -s $drive mkpart primary ext4 513MiB 100%" "Creating root partition"
   
-  # Wait for kernel to recognize partitions
+  # Wait for the kernel to recognize partitions
   execute_cmd "partprobe $drive" "Refreshing partition table"
   execute_cmd "sleep 2" "Waiting for partition recognition"
   
@@ -380,9 +376,12 @@ phase3_system_installation() {
   
   # Copy system files (this would be extracted from the live ISO)
   log "INFO" "Copying system files (this will take several minutes)..."
-  execute_cmd "rsync -av --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/mnt --exclude=/media --exclude=/lost+found / $install_root/" "Copying system files"
-  
+  execute_cmd "rsync -av \
+  --exclude='/proc' --exclude='/sys' \
+  --exclude='/dev' --exclude='/run' \ --exclude='/tmp' --exclude='/mnt' \
+  --exclude='/lost+found' / $install_root/" "Copying system files"
   # Create essential directories
+  local dir
   for dir in proc sys dev run tmp; do
     execute_cmd "mkdir -p $install_root/$dir" "Creating /$dir directory"
   done
