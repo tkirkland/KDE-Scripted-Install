@@ -33,8 +33,10 @@ log() {
   local timestamp
   timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
-  echo "[$timestamp] [$level] $message" | tee -a "$log_file"
+  # Write timestamped entry to log file only
+  echo "[$timestamp] [$level] $message" >> "$log_file"
 
+  # Display clean message to screen
   case "$level" in
     "ERROR")
       echo -e "${RED}ERROR: $message${NC}" >&2
