@@ -7,27 +7,21 @@
 
 set -euo pipefail
 
-# Constants
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT_DIR
-readonly DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/install.conf"
-readonly DEFAULT_INSTALL_ROOT="/target"
-
-# Global variables (set in main)
-dry_run=false
-log_file=""
-custom_config=""
-force_mode=false
-debug=false
-target_drive=""
-install_root="$DEFAULT_INSTALL_ROOT"
-
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
+
+# Global variables (initialized in main)
+dry_run=false
+log_file=""
+custom_config=""
+force_mode=false
+debug=false
+target_drive=""
+install_root=""
 
 # Log messages with timestamp and color coding
 log() {
@@ -489,6 +483,19 @@ main_installation() {
 
 # Main script entry point with argument parsing and installation flow
 main() {
+    # Initialize constants
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    readonly SCRIPT_DIR="$script_dir"
+    readonly DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/install.conf"
+    readonly DEFAULT_INSTALL_ROOT="/target"
+    
+    # Initialize global variables
+    install_root="$DEFAULT_INSTALL_ROOT"
+    
+    # Parse command line arguments first
+    parse_arguments "$@"
+    
     # Set default log file if not specified
     if [[ -z "$log_file" ]]; then
         log_file="${SCRIPT_DIR}/kde-install-$(date +%Y%m%d-%H%M%S).log"
@@ -499,9 +506,6 @@ main() {
     
     log "INFO" "KDE Neon Automated Installer started"
     log "INFO" "Log file: $log_file"
-    
-    # Parse command line arguments
-    parse_arguments "$@"
     
     # Load existing configuration if available
     load_configuration || true
