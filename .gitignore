@@ -7,3 +7,4 @@ logs/
 # IntelliJ IDEA
 .idea/
 *.iml
+/troubleshooting_ide_warnings.md

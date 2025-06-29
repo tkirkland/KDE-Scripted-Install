@@ -16,7 +16,7 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-# Global variables (initialized in main)
+# Global variables (initialized in main()
 dry_run=false
 log_file=""
 custom_config=""
@@ -51,7 +51,7 @@ log() {
   esac
 }
 
-# Exit with error message and status code 1
+# Exit with an error message and status code 1
 error_exit() {
   log "ERROR" "$1"
   exit 1
@@ -136,7 +136,7 @@ parse_arguments() {
   done
 }
 
-# Check if running as root user (required for installation)
+# Check if running as the root user (required for installation)
 check_root() {
   if [[ $EUID -ne 0 ]]; then
     error_exit "This script must be run as root"
@@ -190,7 +190,7 @@ enumerate_nvme_drives() {
   printf '%s\n' "${drives[@]}"
 }
 
-# Detect Windows installation on specified drive for dual-boot safety
+# Detect Windows installation on a specified drive for dual-boot safety
 detect_windows() {
   local drive="$1"
   log "INFO" "Checking for Windows installation on $drive"
@@ -271,9 +271,9 @@ select_target_drive() {
   log "INFO" "Target drive selected: $target_drive"
 }
 
-# Load configuration from file if it exists
+# Load configuration from a file if it exists
 load_configuration() {
-  local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
+  local config_file="${custom_config:-$default_config_file}"
 
   if [[ -f "$config_file" ]]; then
     log "INFO" "Loading configuration from: $config_file"
@@ -287,7 +287,7 @@ load_configuration() {
 
 # Save the current installation configuration to file
 save_configuration() {
-  local config_file="${custom_config:-$DEFAULT_CONFIG_FILE}"
+  local config_file="${custom_config:-$default_config_file}"
 
   log "INFO" "Saving configuration to: $config_file"
 
@@ -344,10 +344,10 @@ phase2_partitioning() {
   # Unmount any existing partitions
   execute_cmd "umount ${drive}p* 2>/dev/null || true" "Unmounting existing partitions"
 
-  # Create new GPT partition table
+  # Create a new GPT partition table
   execute_cmd "parted -s $drive mklabel gpt" "Creating GPT partition table"
 
-  # Create EFI system partition (512MB)
+  # Create an EFI system partition (512MB)
   execute_cmd "parted -s $drive mkpart primary fat32 1MiB 513MiB" "Creating EFI system partition"
   execute_cmd "parted -s $drive set 1 esp on" "Setting EFI system partition flag"
 
@@ -367,7 +367,7 @@ phase2_partitioning() {
   log "INFO" "Phase 2 completed successfully"
 }
 
-# Phase 3: Mount filesystems, copy system files, and create swap
+# Phase 3: Mount filesystems, copy system files, and create a swap
 phase3_system_installation() {
   log "INFO" "=== Phase 3: System Installation ==="
 
@@ -395,7 +395,7 @@ phase3_system_installation() {
     execute_cmd "mkdir -p $install_root/$dir" "Creating /$dir directory"
   done
 
-  # Create swap file
+  # Create a swap file
   local swap_file_size="${swap_size:-4G}"
   execute_cmd "fallocate -l $swap_file_size $install_root/swapfile" "Creating swap file"
   execute_cmd "chmod 600 $install_root/swapfile" "Setting swap file permissions"
@@ -493,13 +493,14 @@ main_installation() {
 main() {
   # Initialize constants
   local script_dir
+  local default_install_root
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  readonly SCRIPT_DIR="$script_dir"
-  readonly DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/install.conf"
-  readonly DEFAULT_INSTALL_ROOT="/target"
+  readonly script_dir
+  readonly default_config_file="${script_dir}/install.conf"
+  readonly default_install_root="/target"
 
   # Initialize global variables
-  install_root="$DEFAULT_INSTALL_ROOT"
+  install_root="$default_install_root"
 
   # Parse command line arguments first
   parse_arguments "$@"
@@ -518,7 +519,7 @@ main() {
   # Load existing configuration if available
   load_configuration || true
 
-  # Select target drive
+  # Select the target drive
   select_target_drive
 
   # Save configuration for future runs
