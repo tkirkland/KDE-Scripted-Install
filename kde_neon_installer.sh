@@ -26,6 +26,16 @@ show_win=false
 target_drive=""
 install_root=""
 
+# Display message in dry-run mode or log normally
+dry_echo() {
+  local message="$*"
+  if [[ "$dry_run" == "true" ]]; then
+    echo "$message"
+  else
+    log "INFO" "$message"
+  fi
+}
+
 # Log messages with timestamp and color coding
 log() {
   local level="$1"
@@ -62,16 +72,19 @@ execute_cmd() {
   local cmd="$1"
   local description="${2:-}"
 
+  if [[ "$dry_run" == "true" ]]; then
+    if [[ -n "$description" ]]; then
+      echo "[DRY-RUN] $description"
+    fi
+    echo "[DRY-RUN] Would execute: $cmd"
+    return 0
+  fi
+
   if [[ -n "$description" ]]; then
     log "INFO" "$description"
   fi
 
   log "DEBUG" "Executing: $cmd"
-
-  if [[ "$dry_run" == "true" ]]; then
-    log "INFO" "[DRY-RUN] Would execute: $cmd"
-    return 0
-  fi
 
   if ! bash -c "$cmd" 2>&1 | tee -a "$log_file"; then
     error_exit "Command failed: $cmd"
@@ -193,13 +206,17 @@ enumerate_nvme_drives() {
 detect_windows_efi() {
   # Method 1: Check for Windows Boot Manager in EFI
   if efibootmgr | grep -i "Windows Boot Manager" &>/dev/null; then
-    log "WARN" "Windows Boot Manager detected in EFI"
+    if [[ "$show_win" == "true" ]]; then
+      log "WARN" "Windows Boot Manager detected in EFI"
+    fi
     return 0
   fi
 
   # Method 2: Check for Microsoft EFI entries
   if efibootmgr | grep -i "Microsoft" &>/dev/null; then
-    log "WARN" "Microsoft EFI entry detected"
+    if [[ "$show_win" == "true" ]]; then
+      log "WARN" "Microsoft EFI entry detected"
+    fi
     return 0
   fi
 
@@ -209,7 +226,6 @@ detect_windows_efi() {
 # Detect Windows installation on a specified drive for dual-boot safety
 detect_windows() {
   local drive="$1"
-  log "INFO" "Checking for Windows installation on $drive"
 
   # Check partitions for Windows signatures
   local partition
@@ -234,7 +250,7 @@ detect_windows() {
              [[ -d "$temp_mount/System Volume Information" ]]; then
             umount "$temp_mount" 2>/dev/null
             rmdir "$temp_mount" 2>/dev/null
-            log "WARN" "Windows installation detected on $partition (NTFS with Windows directories)"
+            # Windows installation detected on partition
             return 0
           fi
           umount "$temp_mount" 2>/dev/null
@@ -242,13 +258,13 @@ detect_windows() {
         rmdir "$temp_mount" 2>/dev/null
         
         # Even if we can't mount, NTFS is suspicious
-        log "WARN" "NTFS partition detected: $partition (potential Windows)"
+        # NTFS partition found - potential Windows installation
         return 0
       fi
 
       # Method 5: Check for Windows-specific labels
       if [[ "$label" =~ ^(Windows|System|Recovery|Microsoft|EFI|BOOT)$ ]]; then
-        log "WARN" "Windows-related partition label detected: $partition ($label)"
+        # Windows-related partition label detected
         return 0
       fi
 
@@ -261,7 +277,7 @@ detect_windows() {
           if [[ -d "$temp_mount/EFI/Microsoft" ]] || [[ -d "$temp_mount/EFI/Boot" ]]; then
             umount "$temp_mount" 2>/dev/null
             rmdir "$temp_mount" 2>/dev/null
-            log "WARN" "Windows EFI boot files detected on $partition"
+            # Windows EFI boot files detected
             return 0
           fi
           umount "$temp_mount" 2>/dev/null
@@ -280,14 +296,14 @@ detect_windows() {
         local fs_sig
         fs_sig=$(file -s "$partition" 2>/dev/null | grep -i "ntfs\|windows\|microsoft")
         if [[ -n "$fs_sig" ]]; then
-          log "WARN" "Windows filesystem signature detected on $partition"
+          # Windows filesystem signature detected
           return 0
         fi
       fi
     fi
   done
 
-  log "INFO" "No Windows installation detected on $drive"
+  # No Windows installation detected on this drive
   return 1
 }
 
@@ -328,7 +344,7 @@ select_target_drive() {
       # Keep all drives including Windows ones
       drives=("${drives[@]}")
     else
-      log "WARN" "Windows installation detected on drives: ${windows_drives[*]} - excluding from selection"
+      # Silently exclude Windows drives - no warning needed since this is default behavior
       # Check if we have any safe drives left
       if [[ ${#safe_drives[@]} -eq 0 ]]; then
         if [[ "$force_mode" == "true" ]]; then
@@ -386,7 +402,7 @@ select_target_drive() {
 
     if [[ "$dry_run" == "true" ]]; then
       target_drive="${drives[0]}"
-      log "INFO" "[DRY-RUN] Using first drive: $target_drive"
+      echo "[DRY-RUN] Auto-selecting first drive: $target_drive"
     else
       local selection
       read -r -p "Select drive (1-${#drives[@]}): " selection
@@ -450,7 +466,8 @@ EOF
 
 # Phase 1: System preparation, validation, and package installation
 phase1_system_preparation() {
-  log "INFO" "=== Phase 1: System Preparation ==="
+  echo
+  dry_echo "=== Phase 1: System Preparation ==="
 
   check_uefi
   check_network
@@ -466,7 +483,8 @@ phase1_system_preparation() {
 
 # Phase 2: Create GPT partitions and format filesystems
 phase2_partitioning() {
-  log "INFO" "=== Phase 2: Drive Partitioning ==="
+  echo
+  dry_echo "=== Phase 2: Drive Partitioning ==="
 
   local drive="$target_drive"
 
@@ -498,7 +516,8 @@ phase2_partitioning() {
 
 # Phase 3: Mount filesystems, copy system files, and create a swap
 phase3_system_installation() {
-  log "INFO" "=== Phase 3: System Installation ==="
+  echo
+  dry_echo "=== Phase 3: System Installation ==="
 
   local drive="$target_drive"
   local root_part="${drive}p2"
@@ -512,12 +531,21 @@ phase3_system_installation() {
   execute_cmd "mount $root_part $install_root" "Mounting root partition"
   execute_cmd "mount $efi_part $install_root/boot/efi" "Mounting EFI partition"
 
-  # Copy system files (this would be extracted from the live ISO)
-  log "INFO" "Copying system files (this will take several minutes)..."
+  # Mount installation source (live ISO or DVD)
+  execute_cmd "mkdir -p /mnt/source" "Creating source mount point"
+  execute_cmd "mount -o ro /dev/sr0 /mnt/source 2>/dev/null || mount -o ro /dev/cdrom /mnt/source || true" "Mounting installation media"
+  
+  # Extract squashfs filesystem (KDE Neon installation method)
+  execute_cmd "mkdir -p /mnt/squashfs" "Creating squashfs mount point"
+  execute_cmd "mount -o loop /mnt/source/casper/filesystem.squashfs /mnt/squashfs" "Mounting squashfs filesystem"
+  
+  # Copy system files from squashfs (this will take several minutes)
+  log "INFO" "Extracting system files from squashfs (this will take several minutes)..."
   execute_cmd "rsync -av \
   --exclude='/proc' --exclude='/sys' \
-  --exclude='/dev' --exclude='/run' \ --exclude='/tmp' --exclude='/mnt' \
-  --exclude='/lost+found' / $install_root/" "Copying system files"
+  --exclude='/dev' --exclude='/run' --exclude='/tmp' --exclude='/mnt' \
+  --exclude='/lost+found' --exclude='/media' --exclude='/cdrom' \
+  /mnt/squashfs/ $install_root/" "Extracting squashfs system files"
   # Create essential directories
   local dir
   for dir in proc sys dev run tmp; do
@@ -530,12 +558,17 @@ phase3_system_installation() {
   execute_cmd "chmod 600 $install_root/swapfile" "Setting swap file permissions"
   execute_cmd "mkswap $install_root/swapfile" "Formatting swap file"
 
+  # Unmount installation source
+  execute_cmd "umount /mnt/squashfs 2>/dev/null || true" "Unmounting squashfs filesystem"
+  execute_cmd "umount /mnt/source 2>/dev/null || true" "Unmounting installation media"
+
   log "INFO" "Phase 3 completed successfully"
 }
 
 # Phase 4: Install GRUB bootloader and configure fstab
 phase4_bootloader_configuration() {
-  log "INFO" "=== Phase 4: Bootloader Configuration ==="
+  echo
+  dry_echo "=== Phase 4: Bootloader Configuration ==="
 
   local drive="$target_drive"
 
@@ -544,6 +577,7 @@ phase4_bootloader_configuration() {
   execute_cmd "mount --bind /sys $install_root/sys" "Binding /sys"
   execute_cmd "mount --bind /dev $install_root/dev" "Binding /dev"
   execute_cmd "mount --bind /run $install_root/run" "Binding /run"
+  execute_cmd "mount --bind /sys/firmware/efi/efivars $install_root/sys/firmware/efi/efivars" "Binding EFI variables"
 
   # Install GRUB
   execute_cmd "chroot $install_root grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id='KDE Neon' $drive" "Installing GRUB bootloader"
@@ -552,24 +586,30 @@ phase4_bootloader_configuration() {
   execute_cmd "chroot $install_root update-grub" "Generating GRUB configuration"
 
   # Update fstab
-  local root_uuid
-  local efi_uuid
-  root_uuid=$(blkid -s UUID -o value "${drive}p2")
-  efi_uuid=$(blkid -s UUID -o value "${drive}p1")
+  if [[ "$dry_run" == "true" ]]; then
+    echo "[DRY-RUN] Creating /etc/fstab with root and EFI partitions"
+    echo "[DRY-RUN] Would write fstab entries for ${drive}p1 and ${drive}p2"
+  else
+    local root_uuid
+    local efi_uuid
+    root_uuid=$(blkid -s UUID -o value "${drive}p2")
+    efi_uuid=$(blkid -s UUID -o value "${drive}p1")
 
-  cat > "$install_root/etc/fstab" << EOF
+    cat > "$install_root/etc/fstab" << EOF
 # /etc/fstab: static file system information
 UUID=$root_uuid / ext4 defaults 0 1
 UUID=$efi_uuid /boot/efi vfat defaults 0 2
 /swapfile none swap sw 0 0
 EOF
+  fi
 
   log "INFO" "Phase 4 completed successfully"
 }
 
 # Phase 5: Configure locale, hostname, and cleanup live packages
 phase5_system_configuration() {
-  log "INFO" "=== Phase 5: System Configuration ==="
+  echo
+  dry_echo "=== Phase 5: System Configuration ==="
 
   # Set timezone to local time
   execute_cmd "chroot $install_root timedatectl set-local-rtc 1" "Setting system clock to local time"
@@ -596,7 +636,7 @@ phase5_system_configuration() {
   execute_cmd "chroot $install_root update-initramfs -u" "Updating initramfs"
 
   # Unmount chroot filesystems
-  execute_cmd "umount $install_root/proc $install_root/sys $install_root/dev $install_root/run" "Unmounting chroot filesystems"
+  execute_cmd "umount $install_root/sys/firmware/efi/efivars $install_root/proc $install_root/sys $install_root/dev $install_root/run" "Unmounting chroot filesystems"
   execute_cmd "umount $install_root/boot/efi $install_root" "Unmounting installation partitions"
 
   log "INFO" "Phase 5 completed successfully"
@@ -655,6 +695,22 @@ main() {
 
   # Select the target drive
   select_target_drive
+
+  # Check if installation directory exists and has data
+  if [[ -d "$install_root" ]] && [[ -n "$(ls -A "$install_root" 2>/dev/null)" ]]; then
+    echo -e "\n${YELLOW}WARNING: Installation directory $install_root already exists and contains data.${NC}"
+    if [[ "$dry_run" == "false" ]]; then
+      echo "This data will be lost during installation."
+      read -r -p "Continue and remove existing data? (y/N): " confirm
+      if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        log "INFO" "Installation cancelled by user"
+        exit 0
+      fi
+      execute_cmd "rm -rf $install_root/*" "Cleaning installation directory"
+    else
+      echo "[DRY-RUN] Would remove existing data in $install_root"
+    fi
+  fi
 
   # Save configuration for future runs
   save_configuration
