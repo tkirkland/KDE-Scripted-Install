@@ -273,7 +273,7 @@ detect_windows() {
     if [[ -b "$partition" ]]; then
       # Use file command to check for Windows-specific file signatures
       if command -v file >/dev/null 2>&1; then
-        # Check for NTFS volume with Windows boot sector
+        # Check for NTFS volume with the Windows boot sector
         local fs_sig
         fs_sig=$(file -s "$partition" 2>/dev/null | grep -i "ntfs\|windows\|microsoft")
         if [[ -n "$fs_sig" ]]; then
@@ -314,7 +314,7 @@ select_target_drive() {
 
     if [[ "$dry_run" == "true" ]]; then
       local target_drive
-      target_drive="${drives[0]}"
+     target_drive="${drives[0]}"
       log "INFO" "[DRY-RUN] Using first drive: $target_drive"
     else
       local selection
