@@ -22,6 +22,7 @@ log_file=""
 custom_config=""
 force_mode=false
 debug=false
+show_win=false
 target_drive=""
 install_root=""
 
@@ -36,16 +37,13 @@ log() {
   # Write timestamped entry to log file only
   echo "[$timestamp] [$level] $message" >> "$log_file"
 
-  # Display clean message to screen
+  # Display only ERROR and WARN messages to screen
   case "$level" in
     "ERROR")
       echo -e "${RED}ERROR: $message${NC}" >&2
       ;;
     "WARN")
       echo -e "${YELLOW}WARNING: $message${NC}" >&2
-      ;;
-    "INFO")
-      echo -e "${GREEN}INFO: $message${NC}"
       ;;
     "DEBUG")
       [[ "$debug" == "true" ]] && echo -e "${BLUE}DEBUG: $message${NC}"
@@ -93,6 +91,7 @@ Options:
   --config PATH          Use custom configuration file
   --force                Skip safety checks (use with caution)
   --debug                Enable debug output
+  --show-win             Include Windows drives in selection menu
   --help                 Show this help message
 
 Examples:
@@ -125,6 +124,10 @@ parse_arguments() {
         ;;
       --debug)
         debug=true
+        shift
+        ;;
+      --show-win)
+        show_win=true
         shift
         ;;
       --help)
@@ -167,7 +170,7 @@ enumerate_nvme_drives() {
   local drive
 
   for drive in /dev/nvme*n*; do
-    if [[ -b "$drive" && ! "$drive" =~ nvme[0-9]+n[0-9]+p[0-9]+ ]]; then
+    if [[ -b "$drive" && "$drive" =~ /dev/nvme[0-9]+n[0-9]+$ ]]; then
       # Check if it's an internal drive (not USB)
       local drive_name
       drive_name=$(basename "$drive")
@@ -178,24 +181,16 @@ enumerate_nvme_drives() {
         removable=$(cat "$sys_path/removable" 2>/dev/null || echo "0")
         if [[ "$removable" == "0" ]]; then
           drives+=("$drive")
-          log "DEBUG" "Found internal NVMe drive: $drive"
         fi
       fi
     fi
   done
 
-  if [[ ${#drives[@]} -eq 0 ]]; then
-    error_exit "No suitable NVMe drives found"
-  fi
-
   printf '%s\n' "${drives[@]}"
 }
 
-# Detect Windows installation on a specified drive for dual-boot safety
-detect_windows() {
-  local drive="$1"
-  log "INFO" "Checking for Windows installation on $drive"
-
+# Check for global Windows EFI entries (system-wide, not drive-specific)
+detect_windows_efi() {
   # Method 1: Check for Windows Boot Manager in EFI
   if efibootmgr | grep -i "Windows Boot Manager" &>/dev/null; then
     log "WARN" "Windows Boot Manager detected in EFI"
@@ -208,7 +203,15 @@ detect_windows() {
     return 0
   fi
 
-  # Method 3: Check partitions for Windows signatures
+  return 1
+}
+
+# Detect Windows installation on a specified drive for dual-boot safety
+detect_windows() {
+  local drive="$1"
+  log "INFO" "Checking for Windows installation on $drive"
+
+  # Check partitions for Windows signatures
   local partition
   for partition in "${drive}"p*; do
     if [[ -b "$partition" ]]; then
@@ -294,6 +297,64 @@ select_target_drive() {
   local drives
   mapfile -t drives < <(enumerate_nvme_drives)
 
+  if [[ ${#drives[@]} -eq 0 ]]; then
+    error_exit "No suitable NVMe drives found"
+  fi
+
+  # Check for global Windows EFI entries first
+  local windows_efi_detected=false
+  if detect_windows_efi; then
+    windows_efi_detected=true
+  fi
+
+  # Windows detection on all drives for safety
+  local windows_detected=false
+  local windows_drives=()
+  local safe_drives=()
+  local drive
+  for drive in "${drives[@]}"; do
+    if detect_windows "$drive"; then
+      windows_detected=true
+      windows_drives+=("$drive")
+    else
+      safe_drives+=("$drive")
+    fi
+  done
+
+  # Handle Windows drives based on flags
+  if [[ "$windows_detected" == "true" ]]; then
+    if [[ "$show_win" == "true" ]]; then
+      log "WARN" "Windows installation detected on drives: ${windows_drives[*]} - included in selection (--show-win enabled)"
+      # Keep all drives including Windows ones
+      drives=("${drives[@]}")
+    else
+      log "WARN" "Windows installation detected on drives: ${windows_drives[*]} - excluding from selection"
+      # Check if we have any safe drives left
+      if [[ ${#safe_drives[@]} -eq 0 ]]; then
+        if [[ "$force_mode" == "true" ]]; then
+          log "WARN" "Force mode enabled - using all drives despite Windows detection"
+          drives=("${drives[@]}")
+        else
+          error_exit "No safe drives available. All drives contain Windows installations. Use --show-win or --force to override."
+        fi
+      else
+        # Update drives array to only safe drives
+        drives=("${safe_drives[@]}")
+      fi
+    fi
+  fi
+
+  # Display EFI warning separately (doesn't exclude drives)
+  if [[ "$windows_efi_detected" == "true" && "$force_mode" == "false" ]]; then
+    if [[ "$dry_run" == "false" ]]; then
+      read -r -p "Windows EFI entries detected. Continue with installation? (y/N): " confirm
+      if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        error_exit "Installation cancelled by user"
+      fi
+    fi
+  fi
+
+  # Drive selection
   if [[ ${#drives[@]} -eq 1 ]]; then
     target_drive="${drives[0]}"
     log "INFO" "Single drive detected: $target_drive"
@@ -305,16 +366,26 @@ select_target_drive() {
       local size
       local size_gb
       local model
+      local windows_flag=""
       size=$(lsblk -b -d -o SIZE "$drive" 2>/dev/null | tail -n1)
       size_gb=$((size / 1024 / 1024 / 1024))
       model=$(lsblk -d -o MODEL "$drive" 2>/dev/null | tail -n1)
+      
+      # Add Windows indicator if --show-win is enabled
+      if [[ "$show_win" == "true" ]]; then
+        for windows_drive in "${windows_drives[@]}"; do
+          if [[ "$drive" == "$windows_drive" ]]; then
+            windows_flag=" (Windows detected)"
+            break
+          fi
+        done
+      fi
 
-      echo "  $((i+1)). $drive - ${size_gb}GB - $model"
+      echo "  $((i+1)). $drive - ${size_gb}GB - $model$windows_flag"
     done
 
     if [[ "$dry_run" == "true" ]]; then
-      local target_drive
-     target_drive="${drives[0]}"
+      target_drive="${drives[0]}"
       log "INFO" "[DRY-RUN] Using first drive: $target_drive"
     else
       local selection
@@ -323,17 +394,6 @@ select_target_drive() {
         target_drive="${drives[$((selection-1))]}"
       else
         error_exit "Invalid selection"
-      fi
-    fi
-  fi
-
-  # Windows detection and safety check
-  if detect_windows "$target_drive" && [[ "$force_mode" == "false" ]]; then
-    log "WARN" "Windows installation detected on $target_drive"
-    if [[ "$dry_run" == "false" ]]; then
-      read -r -p "Continue with installation? This may affect Windows boot. (y/N): " confirm
-      if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        error_exit "Installation cancelled by user"
       fi
     fi
   fi
@@ -392,7 +452,6 @@ EOF
 phase1_system_preparation() {
   log "INFO" "=== Phase 1: System Preparation ==="
 
-  check_root
   check_uefi
   check_network
 
@@ -578,6 +637,11 @@ main() {
   # Set default log file if not specified
   if [[ -z "$log_file" ]]; then
     log_file="${script_dir}/logs/kde-install-$(date +%Y%m%d-%H%M%S).log"
+  fi
+
+  # Check root privileges immediately (except for help/dry-run)
+  if [[ "$dry_run" == "false" ]]; then
+    check_root
   fi
 
   # Initialize logging
