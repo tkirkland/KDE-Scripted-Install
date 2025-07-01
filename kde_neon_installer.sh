@@ -965,7 +965,7 @@ prompt_for_settings() {
   
   # Collect additional settings for static configuration
   if [[ "$network_config" == "static" ]]; then
-    # Detect currently active interface
+    # Detect the currently active interface
     local current_iface
     current_iface=$(ip route | grep default | head -n1 | awk '{print $5}' 2>/dev/null || echo "")
     
@@ -1147,18 +1147,23 @@ phase3_system_installation() {
   log "INFO" "Extracting system files from squashfs (this will take several minutes)..."
   if [[ $dry_run == "true" ]]; then
     echo "[DRY-RUN] Would extract squashfs system files with rsync"
-else
+  else
     # Run rsync quietly and just log the summary
-    local rsync_start_time=$(date +%s)
+    local rsync_start_time
+    local rsync_end_time
+    local rsync_duration
+    
+    rsync_start_time=$(date +%s)
     rsync -a --quiet \
       --exclude='/proc' --exclude='/sys' \
       --exclude='/dev' --exclude='/run' --exclude='/tmp' --exclude='/mnt' \
       --exclude='/lost+found' --exclude='/media' --exclude='/cdrom' \
-      /mnt/squashfs/ "$install_root/" \
-                                      && local rsync_end_time=$(date +%s) \
-                                     && local rsync_duration=$((rsync_end_time - rsync_start_time)) \
-                                                                && log "INFO" "System file extraction completed in ${rsync_duration}s"
-fi
+      /mnt/squashfs/ "$install_root/" && {
+      rsync_end_time=$(date +%s)
+      rsync_duration=$((rsync_end_time - rsync_start_time))
+      log "INFO" "System file extraction completed in ${rsync_duration}s"
+    }
+  fi
   # Create essential directories
   local dir
   for dir in proc sys dev run tmp; do
