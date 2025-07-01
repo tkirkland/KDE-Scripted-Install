@@ -1,0 +1,18 @@
+[2025-06-30 04:47:33] [INFO] KDE Neon Automated Installer started
+[2025-06-30 04:47:33] [INFO] Log file: /home/neon/proj/logparser/logs/kde-install-20250630-044733.log
+[2025-06-30 04:47:33] [INFO] Loading configuration from: /home/neon/proj/logparser/install.conf
+[2025-06-30 04:47:33] [INFO] Enumerating NVMe drives...
+[2025-06-30 04:47:33] [WARN] Windows Boot Manager detected in EFI
+[2025-06-30 04:47:34] [INFO] Multiple drives detected:
+[2025-06-30 04:47:34] [INFO] Target drive selected: /dev/nvme1n1
+[2025-06-30 04:47:34] [INFO] Saving configuration to: /home/neon/proj/logparser/install.conf
+[2025-06-30 04:47:34] [INFO] Starting KDE Neon installation process
+[2025-06-30 04:47:34] [INFO] Target drive: /dev/nvme1n1
+[2025-06-30 04:47:34] [INFO] Dry run mode: true
+[2025-06-30 04:47:34] [INFO] UEFI boot mode confirmed
+[2025-06-30 04:47:34] [INFO] Network connectivity confirmed
+[2025-06-30 04:47:34] [INFO] Phase 1 completed successfully
+[2025-06-30 04:47:34] [INFO] Phase 2 completed successfully
+[2025-06-30 04:47:34] [INFO] Copying system files (this will take several minutes)...
+[2025-06-30 04:47:34] [INFO] Phase 3 completed successfully
+[2025-06-30 04:47:34] [INFO] Phase 4 completed successfully

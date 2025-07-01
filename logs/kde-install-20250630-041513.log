@@ -1,0 +1,6 @@
+[2025-06-30 04:15:13] [INFO] KDE Neon Automated Installer started
+[2025-06-30 04:15:13] [INFO] Log file: /home/neon/proj/logparser/logs/kde-install-20250630-041513.log
+[2025-06-30 04:15:13] [INFO] Loading configuration from: /home/neon/proj/logparser/install.conf
+[2025-06-30 04:15:13] [INFO] Enumerating NVMe drives...
+[2025-06-30 04:15:13] [DEBUG] Found internal NVMe drive: /dev/nvme0n1
+[2025-06-30 04:15:13] [ERROR] No suitable NVMe drives found

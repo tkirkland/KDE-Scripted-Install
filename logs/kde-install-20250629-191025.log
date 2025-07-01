@@ -1,0 +1,6 @@
+[2025-06-29 19:10:25] [INFO] KDE Neon Automated Installer started
+[2025-06-29 19:10:25] [INFO] Log file: /home/neon/proj/logparser/logs/kde-install-20250629-191025.log
+[2025-06-29 19:10:25] [INFO] No existing configuration found, will prompt for settings
+[2025-06-29 19:10:25] [INFO] Enumerating NVMe drives...
+[2025-06-29 19:10:25] [DEBUG] Found internal NVMe drive: /dev/nvme0n1
+[2025-06-29 19:10:25] [INFO] Multiple drives detected:

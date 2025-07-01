@@ -1,0 +1,7 @@
+[2025-07-01 03:38:25] [INFO] KDE Neon Automated Installer started
+[2025-07-01 03:38:25] [INFO] Log file: /home/neon/proj/logparser/logs/kde-install-20250701-033825.log
+[2025-07-01 03:38:25] [INFO] Loading configuration from: /home/neon/proj/logparser/install.conf
+[2025-07-01 03:38:25] [INFO] Enumerating NVMe drives...
+[2025-07-01 03:38:25] [INFO] Multiple drives detected:
+[2025-07-01 03:38:25] [INFO] Target drive selected: /dev/nvme1n1
+[2025-07-01 03:38:25] [INFO] Saving configuration to: /home/neon/proj/logparser/install.conf

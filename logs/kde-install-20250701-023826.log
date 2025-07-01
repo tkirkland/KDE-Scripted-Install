@@ -1,0 +1,15 @@
+[2025-07-01 02:38:26] [INFO] KDE Neon Automated Installer started
+[2025-07-01 02:38:26] [INFO] Log file: /home/neon/proj/logparser/logs/kde-install-20250701-023826.log
+[2025-07-01 02:38:26] [INFO] Loading configuration from: /home/neon/proj/logparser/install.conf
+[2025-07-01 02:38:26] [INFO] Enumerating NVMe drives...
+[2025-07-01 02:38:26] [INFO] Multiple drives detected:
+[2025-07-01 02:38:29] [INFO] Target drive selected: /dev/nvme3n1
+[2025-07-01 02:38:29] [INFO] Saving configuration to: /home/neon/proj/logparser/install.conf
+[2025-07-01 02:38:33] [INFO] Starting KDE Neon installation process
+[2025-07-01 02:38:33] [INFO] Target drive: /dev/nvme3n1
+[2025-07-01 02:38:33] [INFO] Dry run mode: false
+[2025-07-01 02:38:33] [INFO] === Phase 1: Preparing system and installing required tools ===
+[2025-07-01 02:38:33] [INFO] UEFI boot mode confirmed
+[2025-07-01 02:38:33] [INFO] Network connectivity confirmed
+[2025-07-01 02:38:33] [INFO] Updating package database
+[2025-07-01 02:38:33] [DEBUG] Executing: apt-get update

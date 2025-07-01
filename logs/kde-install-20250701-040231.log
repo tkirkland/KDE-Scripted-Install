@@ -1,0 +1,100 @@
+[2025-07-01 04:02:31] [INFO] KDE Neon Automated Installer started
+[2025-07-01 04:02:31] [INFO] Log file: /home/neon/proj/logparser/logs/kde-install-20250701-040231.log
+[2025-07-01 04:02:31] [INFO] Loading configuration from: /home/neon/proj/logparser/install.conf
+[2025-07-01 04:02:31] [INFO] Enumerating NVMe drives...
+[2025-07-01 04:02:32] [INFO] Multiple drives detected:
+[2025-07-01 04:02:48] [INFO] Target drive selected: /dev/nvme3n1
+[2025-07-01 04:03:03] [INFO] Cleaning installation directory
+[2025-07-01 04:03:03] [DEBUG] Executing: rm -rf /target/*
+[2025-07-01 04:03:03] [INFO] Saving configuration to: /home/neon/proj/logparser/install.conf
+[2025-07-01 04:03:25] [INFO] Starting KDE Neon installation process
+[2025-07-01 04:03:25] [INFO] Target drive: /dev/nvme3n1
+[2025-07-01 04:03:25] [INFO] Dry run mode: false
+[2025-07-01 04:03:25] [INFO] === Phase 1: Preparing system and installing required tools ===
+[2025-07-01 04:03:25] [INFO] UEFI boot mode confirmed
+[2025-07-01 04:03:25] [INFO] Network connectivity confirmed
+[2025-07-01 04:03:25] [INFO] Updating package database
+[2025-07-01 04:03:25] [DEBUG] Executing: apt-get update
+Failed to start apt-news.service: Unit apt-news.service not found.
+Failed to start esm-cache.service: Unit esm-cache.service not found.
+Get:1 file:/var/lib/preinstalled-pool noble InRelease
+Ign:1 file:/var/lib/preinstalled-pool noble InRelease
+Get:2 file:/var/lib/preinstalled-pool noble Release [3949 B]
+Get:2 file:/var/lib/preinstalled-pool noble Release [3949 B]
+Hit:4 http://archive.ubuntu.com/ubuntu noble InRelease
+Hit:5 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:6 https://packages.mozilla.org/apt mozilla InRelease
+Hit:7 http://archive.ubuntu.com/ubuntu noble-updates InRelease
+Get:8 http://archive.neon.kde.org/user noble InRelease [193 kB]
+Fetched 193 kB in 1s (241 kB/s)
+Reading package lists...
+[2025-07-01 04:03:26] [INFO] Installing partitioning tools
+[2025-07-01 04:03:26] [DEBUG] Executing: apt-get install -y parted gdisk dosfstools e2fsprogs
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Starting pkgProblemResolver with broken count: 0
+Starting 2 pkgProblemResolver with broken count: 0
+Done
+parted is already the newest version (3.6-4build1).
+gdisk is already the newest version (1.0.10-1build1).
+dosfstools is already the newest version (4.2-1.1build1).
+e2fsprogs is already the newest version (1.47.0-2.4~exp1ubuntu4.1).
+0 upgraded, 0 newly installed, 0 to remove and 123 not upgraded.
+[2025-07-01 04:03:27] [INFO] Phase 1 completed successfully
+[2025-07-01 04:03:27] [INFO] === Phase 2: Creating partitions on /dev/nvme3n1 ===
+[2025-07-01 04:03:27] [INFO] Unmounting existing partitions
+[2025-07-01 04:03:27] [DEBUG] Executing: umount /dev/nvme3n1p* 2>/dev/null || true
+[2025-07-01 04:03:27] [INFO] Creating GPT partition table
+[2025-07-01 04:03:27] [DEBUG] Executing: parted -s /dev/nvme3n1 mklabel gpt
+[2025-07-01 04:03:27] [INFO] Creating EFI system partition
+[2025-07-01 04:03:27] [DEBUG] Executing: parted -s /dev/nvme3n1 mkpart primary fat32 1MiB 513MiB
+[2025-07-01 04:03:27] [INFO] Setting EFI system partition flag
+[2025-07-01 04:03:27] [DEBUG] Executing: parted -s /dev/nvme3n1 set 1 esp on
+[2025-07-01 04:03:27] [INFO] Creating root partition
+[2025-07-01 04:03:27] [DEBUG] Executing: parted -s /dev/nvme3n1 mkpart primary ext4 513MiB 100%
+[2025-07-01 04:03:27] [INFO] Refreshing partition table
+[2025-07-01 04:03:27] [DEBUG] Executing: partprobe /dev/nvme3n1
+[2025-07-01 04:03:27] [INFO] Waiting for partition recognition
+[2025-07-01 04:03:27] [DEBUG] Executing: sleep 2
+[2025-07-01 04:03:29] [INFO] Formatting EFI partition
+[2025-07-01 04:03:29] [DEBUG] Executing: mkfs.fat -F32 -n EFI /dev/nvme3n1p1
+mkfs.fat 4.2 (2021-01-31)
+[2025-07-01 04:03:29] [INFO] Formatting root partition
+[2025-07-01 04:03:29] [DEBUG] Executing: mkfs.ext4 -F -L KDE-Neon /dev/nvme3n1p2
+mke2fs 1.47.0 (5-Feb-2023)
+Discarding device blocks:         0/244059136 62914560/244059136                   done                            
+Creating filesystem with 244059136 4k blocks and 61022208 inodes
+Filesystem UUID: ce869e3e-803a-48ff-8a47-4bfcb5970982
+Superblock backups stored on blocks: 
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208, 
+	4096000, 7962624, 11239424, 20480000, 23887872, 71663616, 78675968, 
+	102400000, 214990848
+
+Allocating group tables:    0/7449         done                            
+Writing inode tables:    0/7449         done                            
+Creating journal (262144 blocks): done
+Writing superblocks and filesystem accounting information:    0/7449         done
+
+[2025-07-01 04:03:30] [INFO] Phase 2 completed successfully
+[2025-07-01 04:03:30] [INFO] === Phase 3: Installing KDE Neon system files ===
+[2025-07-01 04:03:30] [INFO] Creating installation root
+[2025-07-01 04:03:30] [DEBUG] Executing: mkdir -p /target
+[2025-07-01 04:03:30] [INFO] Mounting root partition
+[2025-07-01 04:03:30] [DEBUG] Executing: mount /dev/nvme3n1p2 /target
+[2025-07-01 04:03:30] [INFO] Creating EFI mount point
+[2025-07-01 04:03:30] [DEBUG] Executing: mkdir -p /target/boot/efi
+[2025-07-01 04:03:30] [INFO] Mounting EFI partition
+[2025-07-01 04:03:30] [DEBUG] Executing: mount /dev/nvme3n1p1 /target/boot/efi
+[2025-07-01 04:03:30] [INFO] Creating source mount point
+[2025-07-01 04:03:30] [DEBUG] Executing: mkdir -p /mnt/source
+[2025-07-01 04:03:30] [INFO] Mounting installation media
+[2025-07-01 04:03:30] [DEBUG] Executing: mount -o ro /dev/sr0 /mnt/source 2>/dev/null || mount -o ro /dev/cdrom /mnt/source || true
+mount: /mnt/source: special device /dev/cdrom does not exist.
+       dmesg(1) may have more information after failed mount system call.
+[2025-07-01 04:03:30] [INFO] Creating squashfs mount point
+[2025-07-01 04:03:30] [DEBUG] Executing: mkdir -p /mnt/squashfs
+[2025-07-01 04:03:30] [INFO] Mounting squashfs filesystem
+[2025-07-01 04:03:30] [DEBUG] Executing: mount -o loop /mnt/source/casper/filesystem.squashfs /mnt/squashfs
+mount: /mnt/squashfs: failed to setup loop device for /mnt/source/casper/filesystem.squashfs.
+[2025-07-01 04:03:30] [ERROR] Command failed: mount -o loop /mnt/source/casper/filesystem.squashfs /mnt/squashfs

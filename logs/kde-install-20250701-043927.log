@@ -1,0 +1,14 @@
+[2025-07-01 04:39:27] [INFO] KDE Neon Automated Installer started
+[2025-07-01 04:39:27] [INFO] Log file: /home/neon/proj/logparser/logs/kde-install-20250701-043927.log
+[2025-07-01 04:39:27] [INFO] Loading configuration from: /home/neon/proj/logparser/install.conf
+[2025-07-01 04:39:27] [INFO] Enumerating NVMe drives...
+[2025-07-01 04:39:28] [INFO] Multiple drives detected:
+[2025-07-01 04:39:31] [INFO] Target drive selected: /dev/nvme3n1
+[2025-07-01 04:39:56] [INFO] Unmounting /target/dev
+[2025-07-01 04:39:56] [DEBUG] Executing: umount /target/dev
+[2025-07-01 04:39:56] [INFO] Unmounting /target/run
+[2025-07-01 04:39:56] [DEBUG] Executing: umount /target/run
+[2025-07-01 04:39:56] [INFO] Unmounting /target/sys
+[2025-07-01 04:39:56] [DEBUG] Executing: umount /target/sys
+umount: /target/sys: target is busy.
+[2025-07-01 04:39:56] [ERROR] Command failed: umount /target/sys
