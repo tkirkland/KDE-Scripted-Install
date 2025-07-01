@@ -14,12 +14,11 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-# Display a message in dry-run mode or log normally
+# Display a message in both dry-run and live modes
 dry_echo() {
   local message="$*"
-  if [[ $dry_run == "true"   ]]; then
-    echo "$message"
-  else
+  echo "$message"
+  if [[ $dry_run == "false"   ]]; then
     log "INFO" "$message"
   fi
 }
@@ -44,7 +43,7 @@ log() {
       echo -e "${YELLOW}WARNING: $message${NC}" >&2
       ;;
     "DEBUG")
-      [[ $debug == "true"   ]] && echo -e "${BLUE}DEBUG: $message${NC}"
+      [[ $debug == "true"   ]] && echo -e "${BLUE}DEBUG: $message${NC}" || true
       ;;
   esac
 }
@@ -90,9 +89,9 @@ Options:
   --dry-run              Test mode - show what would be done
   --log-path PATH        Custom log file location
   --config PATH          Use custom configuration file
-  --force                Skip safety checks (use with caution)
-  --debug                Enable debug output
-  --show-win             Include Windows drives in selection menu
+  --force                Skip Windows detection safety checks (DANGEROUS: may overwrite Windows)
+  --debug                Show detailed technical output during installation
+  --show-win             Show drives containing Windows in selection (normally hidden for safety)
   --help                 Show this help message
 
 Examples:
@@ -145,23 +144,44 @@ parse_arguments() {
 # Check if running as the root user (required for installation)
 check_root() {
   if [[ $EUID -ne 0 ]]; then
-    error_exit "This script must be run as root"
+    echo -e "${RED}Root privileges required${NC}"
+    echo "This installer needs to modify system partitions and install software."
+    echo "Please run with: sudo $0"
+    exit 1
   fi
 }
 
 # Verify UEFI boot mode is enabled
 check_uefi() {
   if [[ ! -d /sys/firmware/efi ]]; then
-    error_exit "UEFI boot mode required. Legacy BIOS not supported."
+    echo -e "${RED}UEFI Boot Mode Required${NC}"
+    echo "This installer only works on computers booted in UEFI mode."
+    echo "Your computer appears to be using legacy BIOS mode."
+    echo ""
+    echo "To fix this:"
+    echo "  1. Restart your computer"
+    echo "  2. Enter BIOS/UEFI settings (usually F2, F12, or Delete during boot)"
+    echo "  3. Enable UEFI boot mode and disable Legacy/CSM mode"
+    echo "  4. Boot from the KDE Neon USB in UEFI mode"
+    exit 1
   fi
   log "INFO" "UEFI boot mode confirmed"
 }
 
 # Test network connectivity (required for package downloads)
 check_network() {
+  echo "Checking internet connection..."
   if ! ping -c 1 8.8.8.8 &> /dev/null; then
+    echo -e "${RED}Internet Connection Required${NC}"
+    echo "KDE Neon installation needs internet access to:"
+    echo "  • Download updated packages"
+    echo "  • Install graphics drivers"
+    echo "  • Configure system updates"
+    echo ""
+    echo "Please connect to the internet and try again."
     error_exit "Network connectivity required for installation"
   fi
+  echo -e "${GREEN}✓ Internet connection confirmed${NC}"
   log "INFO" "Network connectivity confirmed"
 }
 
@@ -226,6 +246,7 @@ detect_windows() {
       label=$(blkid -o value -s LABEL "$partition" 2> /dev/null || echo "")
       uuid=$(blkid -o value -s UUID "$partition" 2> /dev/null || echo "")
 
+      
       # Method 4: Check for Windows-specific filesystem signatures
       if [[ $fs_type == "ntfs"   ]]; then
         # Mount temporarily to check for Windows directories
@@ -251,7 +272,7 @@ detect_windows() {
       fi
 
       # Method 5: Check for Windows-specific labels
-      if [[ $label =~ ^(Windows|System|Recovery|Microsoft|EFI|BOOT)$   ]]; then
+      if [[ $label =~ ^(Windows|System|Recovery|Microsoft)$   ]]; then
         # Windows-related partition label detected
         return 0
       fi
@@ -262,7 +283,7 @@ detect_windows() {
         mkdir -p "$temp_mount"
         if mount -t vfat -o ro "$partition" "$temp_mount" 2> /dev/null; then
           # Check for Microsoft boot files in the EFI partition
-          if [[ -d "$temp_mount/EFI/Microsoft" ]] || [[ -d "$temp_mount/EFI/Boot" ]]; then
+          if [[ -d "$temp_mount/EFI/Microsoft" ]]; then
             umount "$temp_mount" 2> /dev/null
             rmdir "$temp_mount" 2> /dev/null
             # Windows EFI boot files detected
@@ -328,41 +349,69 @@ select_target_drive() {
   # Handle Windows drives based on flags
   if [[ $windows_detected == "true"   ]]; then
     if [[ $show_win == "true"   ]]; then
+      echo -e "\n${YELLOW}Windows Detection Results:${NC}"
+      echo "Windows installations found on: ${windows_drives[*]}"
+      echo "All drives shown below (--show-win enabled)"
+      echo
       log "WARN" "Windows installation detected on drives: ${windows_drives[*]} - included in selection (--show-win enabled)"
       # Keep all drives including Windows ones
       drives=("${drives[@]}")
     else
-      # Silently exclude Windows drives - no warning needed since this is the default behavior
-      # Check if we have any safe drives left
+      # Exclude Windows drives and inform user
       if [[ ${#safe_drives[@]} -eq 0 ]]; then
         if [[ $force_mode == "true"   ]]; then
+          echo -e "\n${YELLOW}Windows Detection Results:${NC}"
+          echo "All drives contain Windows installations: ${windows_drives[*]}"
+          echo "Force mode enabled - showing all drives"
+          echo
           log "WARN" "Force mode enabled - using all drives despite Windows detection"
           drives=("${drives[@]}")
         else
           error_exit "No safe drives available. All drives contain Windows installations. Use --show-win or --force to override."
         fi
       else
+        echo -e "\n${YELLOW}Windows Detection Results:${NC}"
+        echo "Windows installations found on: ${windows_drives[*]}"
+        echo "Safe drives available: ${safe_drives[*]}"
+        echo "Only safe drives shown below (use --show-win to include Windows drives)"
+        echo
         # Update a drive array to only safe drives
         drives=("${safe_drives[@]}")
       fi
     fi
   fi
 
-  # Display EFI warning separately (doesn't exclude drives)
-  if [[ $windows_efi_detected == "true" && $force_mode == "false"     ]]; then
+  # EFI warning only if showing Windows drives or force mode
+  if [[ $windows_efi_detected == "true" && $show_win == "true" && $force_mode == "false"     ]]; then
+    echo -e "\n${YELLOW}Windows Boot Manager detected in system EFI${NC}"
+    echo "Your computer has Windows installed somewhere."
+    echo "Windows drives are included in the selection below because you used --show-win."
+    echo "Selecting a Windows drive will permanently destroy Windows and all its data."
+    echo "Please verify your drive selection carefully."
+    echo
     if [[ $dry_run == "false"   ]]; then
-      read -r -p "Windows EFI entries detected. Continue with installation? (y/N): " confirm
+      read -r -p "Continue with installation? (y/N): " confirm
       if [[ ! $confirm =~ ^[Yy]$   ]]; then
         error_exit "Installation cancelled by user"
       fi
+    else
+      echo "[DRY-RUN] Would prompt: Continue with installation? (y/N)"
     fi
   fi
 
   # Drive selection
   if [[ ${#drives[@]} -eq 1 ]]; then
     target_drive="${drives[0]}"
+    echo -e "\n${GREEN}Single drive available for installation: $target_drive${NC}"
+    echo -e "${RED}This drive will be completely erased and all data will be permanently lost.${NC}"
+    echo "All other drives in your computer will be left untouched."
     log "INFO" "Single drive detected: $target_drive"
   else
+    echo -e "\n${GREEN}Multiple drives available for KDE Neon installation:${NC}"
+    echo "Select the drive to install KDE Neon on."
+    echo -e "${RED}WARNING: The selected drive will be completely erased and all data will be lost.${NC}"
+    echo "Drives not selected will be left completely untouched."
+    echo
     log "INFO" "Multiple drives detected:"
     local i
     for i in "${!drives[@]}"; do
@@ -375,26 +424,25 @@ select_target_drive() {
       size_gb=$((size / 1024 / 1024 / 1024))
       model=$(lsblk -d -o MODEL "$drive" 2> /dev/null | tail -n1)
 
-      # Add a Windows indicator if --show-win is enabled
+      # Add Windows indicator for any Windows drives in the list
       local windows_drive
-      if [[ $show_win == "true"   ]]; then
-        for windows_drive in "${windows_drives[@]}"; do
-          if [[ $drive == "$windows_drive"   ]]; then
-            windows_flag=" (Windows detected)"
-            break
-          fi
-        done
-      fi
+      for windows_drive in "${windows_drives[@]}"; do
+        if [[ $drive == "$windows_drive"   ]]; then
+          windows_flag=" ${RED}(Contains Windows)${NC}"
+          break
+        fi
+      done
 
       echo "  $((i + 1)). $drive - ${size_gb}GB - $model$windows_flag"
     done
 
+    echo
     if [[ $dry_run == "true"   ]]; then
       target_drive="${drives[0]}"
-      echo "[DRY-RUN] Auto-selecting first drive: $target_drive"
+      echo "[DRY-RUN] Auto-selecting first drive for installation: $target_drive"
     else
       local selection
-      read -r -p "Select drive (1-${#drives[@]}): " selection
+      read -r -p "Select drive for installation (1-${#drives[@]}): " selection
       if [[ $selection =~ ^[0-9]+$   ]] && [[ $selection -ge 1   ]] && [[ $selection -le ${#drives[@]}   ]]; then
         target_drive="${drives[$((selection - 1))]}"
       else
@@ -411,13 +459,213 @@ load_configuration() {
   local config_file="${custom_config:-$default_config_file}"
 
   if [[ -f $config_file   ]]; then
+    echo "Loading saved settings from: $(basename "$config_file")"
     log "INFO" "Loading configuration from: $config_file"
     # shellcheck source=/dev/null
     source "$config_file"
+    echo -e "${GREEN}✓ Configuration loaded${NC}"
+    
+    # Show current settings to user
+    echo
+    echo -e "${YELLOW}Current Settings:${NC}"
+    echo "  Locale: ${locale:-en_US.UTF-8}"
+    echo "  Timezone: ${timezone:-$(detect_timezone)}"
+    echo "  Keyboard Layout: ${keyboard_layout:-us}"
+    echo "  User Full Name: ${user_fullname:-KDE User}"
+    echo "  Username: ${username:-user}"
+    echo "  Hostname: ${hostname:-kde-neon}"
+    echo "  Swap Size: ${swap_size:-4G}"
+    echo "  Root Filesystem: ${root_fs:-ext4}"
+    echo "  Network Config: ${network_config:-dhcp}"
+    echo
+    
+    if [[ $dry_run == "false" ]]; then
+      local choice
+      read -r -p "Use these settings? (y/N/edit): " choice
+      case "${choice,,}" in
+        y|yes)
+          echo "Using saved settings"
+          return 0
+          ;;
+        e|edit)
+          echo "Interactive configuration editing:"
+          prompt_for_settings
+          return 0
+          ;;
+        *)
+          echo "Starting fresh configuration"
+          clear_configuration
+          prompt_for_settings
+          return 0
+          ;;
+      esac
+    else
+      echo "[DRY-RUN] Would prompt: Use these settings? (y/N/edit)"
+      return 0
+    fi
   else
+    echo "No saved configuration found - will prompt for settings"
     log "INFO" "No existing configuration found, will prompt for settings"
+    if [[ $dry_run == "false" ]]; then
+      prompt_for_settings
+    fi
     return 1
   fi
+}
+
+# Clear all configuration variables
+clear_configuration() {
+  unset locale timezone keyboard_layout user_fullname username hostname swap_size root_fs network_config
+}
+
+# Auto-detect timezone using GeoIP (like original Calamares)
+detect_timezone_geoip() {
+  local detected_tz=""
+  
+  # Try ip-api.com first (free, no rate limits for non-commercial)
+  if command -v curl >/dev/null 2>&1; then
+    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
+      grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
+  fi
+  
+  # Fallback to ipinfo.io if first attempt failed
+  if [[ -z "$detected_tz" ]] && command -v curl >/dev/null 2>&1; then
+    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "http://ipinfo.io/json" 2>/dev/null | \
+      grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
+  fi
+  
+  # If GeoIP failed, fall back to system detection
+  if [[ -z "$detected_tz" ]]; then
+    detected_tz=$(detect_timezone_system)
+  fi
+  
+  echo "$detected_tz"
+}
+
+# Auto-detect system timezone from local files
+detect_timezone_system() {
+  local detected_tz
+  if [[ -f /etc/timezone ]]; then
+    detected_tz=$(cat /etc/timezone)
+  elif [[ -L /etc/localtime ]]; then
+    detected_tz=$(readlink /etc/localtime | sed 's|/usr/share/zoneinfo/||')
+  else
+    detected_tz="UTC"
+  fi
+  echo "$detected_tz"
+}
+
+# Main timezone detection (uses GeoIP like Calamares)
+detect_timezone() {
+  detect_timezone_geoip
+}
+
+# Map country codes to common locales
+get_locale_for_country() {
+  local country_code="$1"
+  case "$country_code" in
+    BR) echo "pt_BR.UTF-8" ;;
+    RO) echo "ro_RO.UTF-8" ;;
+    HU) echo "hu_HU.UTF-8" ;;
+    DE) echo "de_DE.UTF-8" ;;
+    FR) echo "fr_FR.UTF-8" ;;
+    ES) echo "es_ES.UTF-8" ;;
+    IT) echo "it_IT.UTF-8" ;;
+    JP) echo "ja_JP.UTF-8" ;;
+    CN) echo "zh_CN.UTF-8" ;;
+    RU) echo "ru_RU.UTF-8" ;;
+    KR) echo "ko_KR.UTF-8" ;;
+    *) echo "en_US.UTF-8" ;;  # Default to US English
+  esac
+}
+
+# Auto-detect locale using GeoIP + system detection
+detect_locale() {
+  local detected_locale=""
+  
+  # First try system locale (highest priority if set)
+  if [[ -n "$LANG" && "$LANG" != "C" && "$LANG" != "POSIX" ]]; then
+    detected_locale="$LANG"
+  elif [[ -f /etc/default/locale ]]; then
+    local system_locale
+    system_locale=$(grep "^LANG=" /etc/default/locale | cut -d= -f2 | tr -d '"')
+    if [[ -n "$system_locale" && "$system_locale" != "C" && "$system_locale" != "POSIX" ]]; then
+      detected_locale="$system_locale"
+    fi
+  fi
+  
+  # If no useful system locale, try GeoIP-based suggestion
+  if [[ -z "$detected_locale" || "$detected_locale" == "C.UTF-8" ]]; then
+    if command -v curl >/dev/null 2>&1; then
+      local country_code
+      country_code=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
+        grep -o '"countryCode":"[^"]*"' | cut -d'"' -f4)
+      
+      if [[ -n "$country_code" ]]; then
+        detected_locale=$(get_locale_for_country "$country_code")
+      fi
+    fi
+  fi
+  
+  # Final fallback
+  if [[ -z "$detected_locale" ]]; then
+    detected_locale="en_US.UTF-8"
+  fi
+  
+  echo "$detected_locale"
+}
+
+# Interactive prompts for configuration settings
+prompt_for_settings() {
+  echo
+  echo -e "${YELLOW}Configuration Setup:${NC}"
+  
+  # Auto-detect system settings for defaults
+  local detected_locale detected_timezone
+  detected_locale=$(detect_locale)
+  detected_timezone=$(detect_timezone)
+  
+  # Prompt for all settings with auto-detected defaults
+  local input
+  
+  # Locale (auto-detected default)
+  read -r -p "Locale [$detected_locale]: " input
+  locale="${input:-$detected_locale}"
+  
+  # Timezone (auto-detected default)
+  read -r -p "Timezone [$detected_timezone]: " input
+  timezone="${input:-$detected_timezone}"
+  
+  # Keyboard layout
+  read -r -p "Keyboard layout [us]: " input
+  keyboard_layout="${input:-us}"
+  
+  # User full name
+  read -r -p "User full name [KDE User]: " input
+  user_fullname="${input:-KDE User}"
+  
+  # Username
+  read -r -p "Username [user]: " input
+  username="${input:-user}"
+  
+  # Hostname
+  read -r -p "Hostname [kde-neon]: " input
+  hostname="${input:-kde-neon}"
+  
+  # Swap size
+  read -r -p "Swap file size [4G]: " input
+  swap_size="${input:-4G}"
+  
+  # Root filesystem
+  read -r -p "Root filesystem [ext4]: " input
+  root_fs="${input:-ext4}"
+  
+  # Network config
+  read -r -p "Network configuration [dhcp]: " input
+  network_config="${input:-dhcp}"
+  
+  echo
+  echo -e "${GREEN}Configuration complete${NC}"
 }
 
 # Save the current installation configuration to file
@@ -431,21 +679,22 @@ save_configuration() {
 # Generated: $(date)
 
 # System settings
-TARGET_DRIVE="$target_drive"
-LOCALE="${LOCALE:-en_US.UTF-8}"
-TIMEZONE="${TIMEZONE:-UTC}"
-KEYBOARD_LAYOUT="${KEYBOARD_LAYOUT:-us}"
+target_drive="$target_drive"
+locale="${locale:-en_US.UTF-8}"
+timezone="${timezone:-$(detect_timezone)}"
+keyboard_layout="${keyboard_layout:-us}"
 
 # User settings
-USERNAME="${USERNAME:-user}"
-HOSTNAME="${HOSTNAME:-kde-neon}"
+user_fullname="${user_fullname:-KDE User}"
+username="${username:-user}"
+hostname="${hostname:-kde-neon}"
 
 # Storage settings
-SWAP_SIZE="${SWAP_SIZE:-4G}"
-ROOT_FS="${ROOT_FS:-ext4}"
+swap_size="${swap_size:-4G}"
+root_fs="${root_fs:-ext4}"
 
 # Network settings
-NETWORK_CONFIG="${NETWORK_CONFIG:-dhcp}"
+network_config="${network_config:-dhcp}"
 EOF
 
   if [[ $dry_run == "false"   ]]; then
@@ -456,16 +705,16 @@ EOF
 # Phase 1: System preparation, validation, and package installation
 phase1_system_preparation() {
   echo
-  dry_echo "=== Phase 1: System Preparation ==="
+  dry_echo "=== Phase 1: Preparing system and installing required tools ==="
 
   check_uefi
   check_network
 
   # Update package database
-  execute_cmd "apt-get update" "Updating package database"
+  execute_cmd "apt-get -qq update" "Updating package database"
 
   # Install required packages
-  execute_cmd "apt-get install -y parted gdisk dosfstools e2fsprogs" "Installing partitioning tools"
+  execute_cmd "apt-get -qq install -y parted gdisk dosfstools e2fsprogs" "Installing partitioning tools"
 
   log "INFO" "Phase 1 completed successfully"
 }
@@ -473,7 +722,7 @@ phase1_system_preparation() {
 # Phase 2: Create GPT partitions and format filesystems
 phase2_partitioning() {
   echo
-  dry_echo "=== Phase 2: Drive Partitioning ==="
+  dry_echo "=== Phase 2: Creating partitions on $target_drive ==="
 
   local drive="$target_drive"
 
@@ -506,7 +755,7 @@ phase2_partitioning() {
 # Phase 3: Mount filesystems, copy system files, and create a swap
 phase3_system_installation() {
   echo
-  dry_echo "=== Phase 3: System Installation ==="
+  dry_echo "=== Phase 3: Installing KDE Neon system files ==="
 
   local drive="$target_drive"
   local root_part="${drive}p2"
@@ -514,23 +763,50 @@ phase3_system_installation() {
 
   # Create mount points
   execute_cmd "mkdir -p $install_root" "Creating installation root"
-  execute_cmd "mkdir -p $install_root/boot/efi" "Creating EFI mount point"
 
-  # Mount partitions
+  # Mount root partition first
   execute_cmd "mount $root_part $install_root" "Mounting root partition"
+  
+  # Create EFI mount point after root is mounted
+  execute_cmd "mkdir -p $install_root/boot/efi" "Creating EFI mount point"
   execute_cmd "mount $efi_part $install_root/boot/efi" "Mounting EFI partition"
 
-  # Mount installation source (live ISO or DVD)
-  execute_cmd "mkdir -p /mnt/source" "Creating source mount point"
-  execute_cmd "mount -o ro /dev/sr0 /mnt/source 2>/dev/null || mount -o ro /dev/cdrom /mnt/source || true" "Mounting installation media"
-
-  # Extract squashfs filesystem (KDE Neon installation method)
+  # Find and mount installation source (live filesystem)
   execute_cmd "mkdir -p /mnt/squashfs" "Creating squashfs mount point"
-  execute_cmd "mount -o loop /mnt/source/casper/filesystem.squashfs /mnt/squashfs" "Mounting squashfs filesystem"
+  
+  # Try to find the squashfs filesystem directly from live system
+  local squashfs_path=""
+  if [[ -f "/run/live/medium/casper/filesystem.squashfs" ]]; then
+    squashfs_path="/run/live/medium/casper/filesystem.squashfs"
+  elif [[ -f "/lib/live/mount/medium/casper/filesystem.squashfs" ]]; then
+    squashfs_path="/lib/live/mount/medium/casper/filesystem.squashfs"
+  elif [[ -f "/cdrom/casper/filesystem.squashfs" ]]; then
+    squashfs_path="/cdrom/casper/filesystem.squashfs"
+  else
+    # Try to find USB drive with casper directory
+    for device in /dev/sd* /dev/nvme*; do
+      if [[ -b "$device" ]]; then
+        execute_cmd "mkdir -p /mnt/source" "Creating source mount point"
+        if execute_cmd "mount -o ro $device /mnt/source 2>/dev/null || true" "Trying to mount $device"; then
+          if [[ -f "/mnt/source/casper/filesystem.squashfs" ]]; then
+            squashfs_path="/mnt/source/casper/filesystem.squashfs"
+            break
+          fi
+          execute_cmd "umount /mnt/source 2>/dev/null || true" "Unmounting $device"
+        fi
+      fi
+    done
+  fi
+  
+  if [[ -z "$squashfs_path" ]]; then
+    error_exit "Could not find KDE Neon installation filesystem. Please ensure you're running from the KDE Neon live USB."
+  fi
+  
+  execute_cmd "mount -o loop $squashfs_path /mnt/squashfs" "Mounting squashfs filesystem from $squashfs_path"
 
   # Copy system files from squashfs (this will take several minutes)
   log "INFO" "Extracting system files from squashfs (this will take several minutes)..."
-  execute_cmd "rsync -av \
+  execute_cmd "rsync -a --info=progress2 \
   --exclude='/proc' --exclude='/sys' \
   --exclude='/dev' --exclude='/run' --exclude='/tmp' --exclude='/mnt' \
   --exclude='/lost+found' --exclude='/media' --exclude='/cdrom' \
@@ -557,7 +833,7 @@ phase3_system_installation() {
 # Phase 4: Install GRUB bootloader and configure fstab
 phase4_bootloader_configuration() {
   echo
-  dry_echo "=== Phase 4: Bootloader Configuration ==="
+  dry_echo "=== Phase 4: Installing and configuring GRUB bootloader ==="
 
   local drive="$target_drive"
 
@@ -565,7 +841,10 @@ phase4_bootloader_configuration() {
   execute_cmd "mount --bind /proc $install_root/proc" "Binding /proc"
   execute_cmd "mount --bind /sys $install_root/sys" "Binding /sys"
   execute_cmd "mount --bind /dev $install_root/dev" "Binding /dev"
+  execute_cmd "mount --bind /dev/pts $install_root/dev/pts" "Binding /dev/pts"
   execute_cmd "mount --bind /run $install_root/run" "Binding /run"
+  execute_cmd "mount -t tmpfs tmpfs $install_root/tmp" "Mounting tmpfs for /tmp"
+  execute_cmd "chmod 1777 $install_root/tmp" "Setting proper permissions on /tmp"
   execute_cmd "mount --bind /sys/firmware/efi/efivars $install_root/sys/firmware/efi/efivars" "Binding EFI variables"
 
   # Install GRUB
@@ -573,6 +852,9 @@ phase4_bootloader_configuration() {
 
   # Generate GRUB configuration
   execute_cmd "chroot $install_root update-grub" "Generating GRUB configuration"
+
+  # Update initramfs after GRUB configuration
+  execute_cmd "chroot $install_root update-initramfs -u -k all" "Updating initramfs for all kernels"
 
   # Update fstab
   if [[ $dry_run == "true"   ]]; then
@@ -598,34 +880,39 @@ EOF
 # Phase 5: Configure locale, hostname, and cleanup live packages
 phase5_system_configuration() {
   echo
-  dry_echo "=== Phase 5: System Configuration ==="
+  dry_echo "=== Phase 5: Configuring system settings and cleanup ==="
 
   # Set timezone to local time
   execute_cmd "chroot $install_root timedatectl set-local-rtc 1" "Setting system clock to local time"
 
   # Configure locale
-  local locale="${LOCALE:-en_US.UTF-8}"
-  execute_cmd "chroot $install_root locale-gen $locale" "Generating locale"
-  execute_cmd "chroot $install_root update-locale LANG=$locale" "Setting system locale"
+  local system_locale="${locale:-en_US.UTF-8}"
+  execute_cmd "chroot $install_root locale-gen $system_locale" "Generating locale"
+  execute_cmd "chroot $install_root update-locale LANG=$system_locale" "Setting system locale"
+  
+  # Disable automatic language pack installation
+  execute_cmd "echo 'APT::Install-Recommends \"false\";' > $install_root/etc/apt/apt.conf.d/90-no-recommends" "Disabling automatic language pack installation"
 
   # Set hostname
-  local hostname="${HOSTNAME:-kde-neon}"
-  execute_cmd "echo $hostname > $install_root/etc/hostname" "Setting hostname"
+  local system_hostname="${hostname:-kde-neon}"
+  execute_cmd "echo $system_hostname > $install_root/etc/hostname" "Setting hostname"
 
   # Remove live system packages
-  execute_cmd "chroot $install_root apt-get --purge -q -y remove calamares neon-live casper" "Removing live system packages"
-  execute_cmd "chroot $install_root apt-get --purge -q -y autoremove" "Cleaning up packages"
+  execute_cmd "chroot $install_root apt-get -qq -y purge calamares neon-live casper '^live-*' >/dev/null 2>&1" "Purging live system packages"
+  execute_cmd "chroot $install_root apt-get -qq -y autoremove --purge >/dev/null 2>&1" "Cleaning up orphaned packages"
+  execute_cmd "chroot $install_root apt-get -qq -y autoclean >/dev/null 2>&1" "Cleaning package cache"
 
-  # KDE Neon specific configurations
-  if [[ -x "/usr/bin/calamares-l10n-helper" ]]; then
-    execute_cmd "chroot $install_root /usr/bin/calamares-l10n-helper" "Configuring localization"
-  fi
 
-  # Update initramfs
-  execute_cmd "chroot $install_root update-initramfs -u" "Updating initramfs"
+  # Initramfs was already updated in Phase 4 after GRUB configuration
 
-  # Unmount chroot filesystems
-  execute_cmd "umount $install_root/sys/firmware/efi/efivars $install_root/proc $install_root/sys $install_root/dev $install_root/run" "Unmounting chroot filesystems"
+  # Unmount chroot filesystems (reverse order of mounting)
+  execute_cmd "umount $install_root/sys/firmware/efi/efivars" "Unmounting EFI variables"
+  execute_cmd "umount $install_root/tmp" "Unmounting /tmp"
+  execute_cmd "umount $install_root/dev/pts" "Unmounting /dev/pts"
+  execute_cmd "umount $install_root/run" "Unmounting /run"
+  execute_cmd "umount $install_root/dev" "Unmounting /dev"
+  execute_cmd "umount $install_root/sys" "Unmounting /sys"
+  execute_cmd "umount $install_root/proc" "Unmounting /proc"
   execute_cmd "umount $install_root/boot/efi $install_root" "Unmounting installation partitions"
 
   log "INFO" "Phase 5 completed successfully"
@@ -645,6 +932,28 @@ main_installation() {
 
   log "INFO" "Installation completed successfully!"
   log "INFO" "System is ready to reboot"
+  
+  # Display completion message to user
+  echo
+  echo -e "${GREEN}🎉 KDE Neon Installation Complete! 🎉${NC}"
+  echo
+  echo -e "${YELLOW}Installation Summary:${NC}"
+  echo "  ✅ KDE Neon installed successfully on $target_drive"
+  echo "  ✅ GRUB bootloader configured"
+  echo "  ✅ System ready for first boot"
+  echo
+  echo -e "${YELLOW}Next Steps:${NC}"
+  echo "  1. Remove the installation USB drive"
+  echo "  2. Restart your computer"
+  echo "  3. Your computer should boot into KDE Neon"
+  echo "  4. Complete the initial user setup"
+  echo
+  echo -e "${YELLOW}Important Notes:${NC}"
+  echo "  • The installation log is saved at: $log_file"
+  echo "  • If the system doesn't boot, check UEFI boot order in BIOS"
+  echo "  • Your original data on $target_drive has been permanently removed"
+  echo
+  echo -e "${GREEN}Ready to reboot!${NC}"
 }
 
 # Script entry point with argument parsing and installation flow
@@ -666,7 +975,6 @@ main() {
   debug=false
   show_win=false
   target_drive=""
-  install_root=""
 
   if [[ ${BASH_SOURCE[0]} != "${0}" ]]; then
     exit 0
@@ -685,8 +993,13 @@ main() {
     check_root
   fi
 
-  # Initialize logging
+  # Initialize logging and cleanup old logs
   mkdir -p "$(dirname "$log_file")"
+  
+  # Delete logs older than 7 days
+  if [[ -d "$(dirname "$log_file")" ]]; then
+    find "$(dirname "$log_file")" -name "kde-install-*.log" -type f -mtime +7 -delete 2>/dev/null || true
+  fi
 
   log "INFO" "KDE Neon Automated Installer started"
   log "INFO" "Log file: $log_file"
@@ -699,9 +1012,45 @@ main() {
 
   # Check if the installation directory exists and has data
   if [[ -d $install_root   ]] && [[ -n "$(ls -A "$install_root" 2> /dev/null)" ]]; then
-    echo -e "\n${YELLOW}WARNING: Installation directory $install_root already exists and contains data.${NC}"
+    echo -e "\n${YELLOW}Installation Target Directory Check${NC}"
+    echo "The system installation target directory $install_root already exists and contains data."
+    echo "This appears to be from a previous installation attempt."
+    echo ""
+    
+    # Check if anything is mounted in the install root
+    if mount | grep -q "$install_root"; then
+      echo -e "${YELLOW}Warning: Filesystems are mounted in $install_root${NC}"
+      if [[ $dry_run == "false" ]]; then
+        mount | grep "$install_root"
+        echo ""
+        echo "These filesystems will be unmounted before cleaning the directory."
+        read -r -p "Continue and unmount these filesystems? (y/N): " confirm
+        if [[ ! $confirm =~ ^[Yy]$ ]]; then
+          log "INFO" "Installation cancelled by user"
+          exit 0
+        fi
+        # Unmount all filesystems in install_root (reverse order for nested mounts)
+        mount | grep "$install_root" | awk '{print $3}' | sort -r | while read -r mountpoint; do
+          execute_cmd "umount $mountpoint" "Unmounting $mountpoint"
+        done
+      else
+        echo "[DRY-RUN] Would unmount filesystems mounted in $install_root"
+      fi
+    fi
+    
+    echo "Contents that will be removed:"
+    if [[ $dry_run == "false" ]]; then
+      find "$install_root" -maxdepth 1 -type f -o -type d | head -10
+      local file_count
+      file_count=$(find "$install_root" -type f 2>/dev/null | wc -l)
+      echo "... and $file_count total files"
+    else
+      echo "[DRY-RUN] Would show directory contents here"
+    fi
+    echo ""
+    echo "This data will be removed to prepare for the new installation."
+    echo
     if [[ $dry_run == "false"   ]]; then
-      echo "This data will be lost during installation."
       read -r -p "Continue and remove existing data? (y/N): " confirm
       if [[ ! $confirm =~ ^[Yy]$   ]]; then
         log "INFO" "Installation cancelled by user"
@@ -709,6 +1058,7 @@ main() {
       fi
       execute_cmd "rm -rf $install_root/*" "Cleaning installation directory"
     else
+      echo "[DRY-RUN] Would prompt: Continue and remove existing data? (y/N)"
       echo "[DRY-RUN] Would remove existing data in $install_root"
     fi
   fi
@@ -716,19 +1066,35 @@ main() {
   # Save configuration for future runs
   save_configuration
 
-  # Confirm installation
-  if [[ $dry_run == "false"   ]]; then
-    echo -e "\n${YELLOW}Installation Summary:${NC}"
-    echo -e "Target Drive: ${GREEN}$target_drive${NC}"
-    echo -e "Installation Root: ${GREEN}$install_root${NC}"
-    echo -e "Log File: ${GREEN}$log_file${NC}"
-    echo
+  # Show installation summary and confirm
+  echo -e "\n${YELLOW}Installation Summary:${NC}"
+  echo -e "Target Drive: ${GREEN}$target_drive${NC} (will be completely erased)"
+  echo -e "Installation Root: ${GREEN}$install_root${NC}"
+  echo -e "Log File: ${GREEN}$log_file${NC}"
+  echo
+  echo "This installation will:"
+  echo "  • Completely erase $target_drive (all existing data will be lost)"
+  echo "  • Create new partitions: 512MB EFI + remaining space for KDE Neon"
+  echo "  • Install KDE Neon operating system from this live USB"
+  echo "  • Install GRUB bootloader so your computer can start KDE Neon"
+  echo "  • Take approximately 15-30 minutes (computer will be unusable during this time)"
+  echo ""
+  echo -e "${YELLOW}After installation:${NC}"
+  echo "  • Your computer will restart into KDE Neon"
+  echo "  • You'll need to set up user accounts and preferences"
+  echo "  • Any data on $target_drive will be permanently gone"
+  echo
 
-    read -r -p "Proceed with installation? (y/N): " confirm
+  if [[ $dry_run == "false"   ]]; then
+    echo -e "${YELLOW}⚠️  WARNING: This will destroy all data on $target_drive${NC}"
+    echo
+    read -r -p "Proceed with KDE Neon installation? (y/N): " confirm
     if [[ ! $confirm =~ ^[Yy]$   ]]; then
       log "INFO" "Installation cancelled by user"
       exit 0
     fi
+  else
+    echo "[DRY-RUN] Would show warning and prompt: Proceed with KDE Neon installation? (y/N)"
   fi
 
   main_installation
