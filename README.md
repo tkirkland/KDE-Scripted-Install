@@ -163,6 +163,12 @@ Options:
 - Preserves EFI system partitions when possible
 - Creates separate boot entries for each OS
 
+### Boot Entry Management
+- Automatically removes existing KDE entries on the target drive (prevents duplicates)
+- Detects KDE entries on other drives and prompts user for removal decisions
+- Shows drive information to help users identify legitimate vs. orphaned entries
+- User controls removal of non-target-drive entries (safety first approach)
+
 ### Error Handling
 - Comprehensive validation at each installation phase
 - Rollback capability for failed operations
