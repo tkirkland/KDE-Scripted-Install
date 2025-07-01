@@ -94,7 +94,7 @@ The comprehensive installer follows a structured 5-phase approach:
 ### Hardware Support
 - **Boot System**: UEFI-only (no legacy BIOS)
 - **Storage**: NVMe drives only (`/dev/nvmeXXX`)
-- **Security**: Secure Boot with MOK signing capability
+- **Security**: UEFI Secure Boot compatible
 - **Memory**: Minimum 4GB RAM (affects swap file sizing)
 
 ### Software Dependencies
