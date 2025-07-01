@@ -1148,7 +1148,7 @@ phase3_system_installation() {
   if [[ $dry_run == "true" ]]; then
     echo "[DRY-RUN] Would extract squashfs system files with rsync"
   else
-    # Run rsync quietly and just log the summary
+    # Run rsync quietly and log the summary
     local rsync_start_time
     local rsync_end_time
     local rsync_duration
