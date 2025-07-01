@@ -4,8 +4,11 @@
 # Based on extracted Calamares installation commands
 # Author: Generated from installation log analysis
 # License: GPL-3.0
+# Version: 2.0
 
 set -euo pipefail
+
+readonly VERSION="2.0"
 
 # Color codes for output
 readonly RED='\033[0;31m'
@@ -81,7 +84,7 @@ execute_cmd() {
 # Display help information and usage examples
 show_help() {
   cat << EOF
-KDE Neon Automated Installer
+KDE Neon Automated Installer v$VERSION
 
 Usage: $0 [options]
 
@@ -1001,6 +1004,22 @@ main() {
     find "$(dirname "$log_file")" -name "kde-install-*.log" -type f -mtime +7 -delete 2>/dev/null || true
   fi
 
+  # Display welcome banner  
+  echo "========================================================="
+  echo "              KDE Neon Installer v$VERSION"
+  echo "           Automated Installation System"
+  echo "========================================================="
+  echo
+  echo " Features:"
+  echo "  • UEFI-only systems with NVMe drives"
+  echo "  • Automatic Windows detection for dual-boot safety"
+  echo "  • GeoIP-based timezone and locale detection"
+  echo "  • Interactive configuration management"
+  echo
+  echo "    WARNING: Target drive will be completely erased"
+  echo "========================================================="
+  echo
+  
   log "INFO" "KDE Neon Automated Installer started"
   log "INFO" "Log file: $log_file"
 
