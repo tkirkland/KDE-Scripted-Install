@@ -1145,11 +1145,20 @@ phase3_system_installation() {
 
   # Copy system files from squashfs (this will take several minutes)
   log "INFO" "Extracting system files from squashfs (this will take several minutes)..."
-  execute_cmd "rsync -a --info=progress2 \
-  --exclude='/proc' --exclude='/sys' \
-  --exclude='/dev' --exclude='/run' --exclude='/tmp' --exclude='/mnt' \
-  --exclude='/lost+found' --exclude='/media' --exclude='/cdrom' \
-  /mnt/squashfs/ $install_root/" "Extracting squashfs system files"
+  if [[ $dry_run == "true" ]]; then
+    echo "[DRY-RUN] Would extract squashfs system files with rsync"
+else
+    # Run rsync quietly and just log the summary
+    local rsync_start_time=$(date +%s)
+    rsync -a --quiet \
+      --exclude='/proc' --exclude='/sys' \
+      --exclude='/dev' --exclude='/run' --exclude='/tmp' --exclude='/mnt' \
+      --exclude='/lost+found' --exclude='/media' --exclude='/cdrom' \
+      /mnt/squashfs/ "$install_root/" \
+                                      && local rsync_end_time=$(date +%s) \
+                                     && local rsync_duration=$((rsync_end_time - rsync_start_time)) \
+                                                                && log "INFO" "System file extraction completed in ${rsync_duration}s"
+fi
   # Create essential directories
   local dir
   for dir in proc sys dev run tmp; do
