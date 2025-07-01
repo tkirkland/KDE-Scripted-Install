@@ -1064,7 +1064,7 @@ main() {
 
   # Check root privileges immediately (except for help/dry-run)
   if [[ $dry_run == "false"   ]]; then
-    check_root
+    check_root "$@"
   fi
 
   # Initialize logging and cleanup old logs
