@@ -526,15 +526,15 @@ clear_configuration() {
 detect_timezone_geoip() {
   local detected_tz=""
   
-  # Try ip-api.com first (free, no rate limits for non-commercial)
+  # Try ipinfo.io first (HTTPS, secure)
   if command -v curl >/dev/null 2>&1; then
-    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
+    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "https://ipinfo.io/json" 2>/dev/null | \
       grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
   fi
   
-  # Fallback to ipinfo.io if the first attempt failed
+  # Fallback to ip-api.com if the first attempt failed (HTTP only - free tier doesn't support HTTPS)
   if [[ -z "$detected_tz" ]] && command -v curl >/dev/null 2>&1; then
-    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "https://ipinfo.io/json" 2>/dev/null | \
+    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
       grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
   fi
   
@@ -602,8 +602,16 @@ detect_locale() {
   if [[ -z "$detected_locale" || "$detected_locale" == "C.UTF-8" ]]; then
     if command -v curl >/dev/null 2>&1; then
       local country_code
-      country_code=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
-        grep -o '"countryCode":"[^"]*"' | cut -d'"' -f4)
+      
+      # Try ipinfo.io first (HTTPS, secure)
+      country_code=$(curl -s --connect-timeout 5 --max-time 10 "https://ipinfo.io/json" 2>/dev/null | \
+        grep -o '"country":"[^"]*"' | cut -d'"' -f4)
+      
+      # Fallback to ip-api.com if the first attempt failed (HTTP only - free tier doesn't support HTTPS)
+      if [[ -z "$country_code" ]]; then
+        country_code=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
+          grep -o '"countryCode":"[^"]*"' | cut -d'"' -f4)
+      fi
       
       if [[ -n "$country_code" ]]; then
         detected_locale=$(get_locale_for_country "$country_code")
