@@ -498,7 +498,7 @@ EOF
 configure_static_network() {
   log "INFO" "Setting up static network configuration"
   
-  if [[ -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
+  if [[ -z "$static_iface" || -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
     log "ERROR" "Missing static network parameters - this should not happen after validation"
     return 1
   fi
@@ -524,6 +524,7 @@ configure_static_network() {
   # Create static IP configuration
   if [[ $dry_run == "true" ]]; then
     echo "[DRY-RUN] Would create static network configuration:"
+    echo "  Interface: $static_iface"
     echo "  IP: $static_ip/$cidr_mask"
     echo "  Gateway: $static_gateway"
     echo "  DNS: ${static_dns:-8.8.8.8,8.8.4.4}"
@@ -531,10 +532,9 @@ configure_static_network() {
     [[ -n "$static_dns_suffix" ]] && echo "  DNS Suffix: $static_dns_suffix"
   else
     # Start building the network config
-    cat > "$network_config_dir/20-wired.network" << EOF
+    cat > "$network_config_dir/20-static-$static_iface.network" << EOF
 [Match]
-Name=en*
-Name=eth*
+Name=$static_iface
 
 [Network]
 Address=$static_ip/$cidr_mask
@@ -548,7 +548,7 @@ EOF
     local domain
     if [[ -n "$static_domain_search" ]]; then
       for domain in $static_domain_search; do
-        echo "Domains=$domain" >> "$network_config_dir/20-wired.network"
+        echo "Domains=$domain" >> "$network_config_dir/20-static-$static_iface.network"
       done
     fi
     
@@ -556,11 +556,11 @@ EOF
     local suffix
     if [[ -n "$static_dns_suffix" ]]; then
       for suffix in $static_dns_suffix; do
-        echo "Domains=$suffix" >> "$network_config_dir/20-wired.network"
+        echo "Domains=$suffix" >> "$network_config_dir/20-static-$static_iface.network"
       done
     fi
     
-    log "INFO" "Created static network configuration: $static_ip/$cidr_mask"
+    log "INFO" "Created static network configuration for $static_iface: $static_ip/$cidr_mask"
     [[ -n "$static_domain_search" ]] && log "INFO" "Added domain search: $static_domain_search"
     [[ -n "$static_dns_suffix" ]] && log "INFO" "Added DNS suffix: $static_dns_suffix"
   fi
@@ -965,8 +965,18 @@ prompt_for_settings() {
   
   # Collect additional settings for static configuration
   if [[ "$network_config" == "static" ]]; then
+    # Detect currently active interface
+    local current_iface
+    current_iface=$(ip route | grep default | head -n1 | awk '{print $5}' 2>/dev/null || echo "")
+    
     while true; do
       echo "Static IP configuration:"
+      if [[ -n "$current_iface" ]]; then
+        read -r -p "Network interface [$current_iface]: " static_iface
+        static_iface="${static_iface:-$current_iface}"
+      else
+        read -r -p "Network interface (e.g., enp0s3, eth0): " static_iface
+      fi
       read -r -p "IP address (e.g., 192.168.1.100): " static_ip
       read -r -p "Subnet mask (e.g., 255.255.255.0): " static_netmask
       read -r -p "Gateway (e.g., 192.168.1.1): " static_gateway
@@ -975,8 +985,8 @@ prompt_for_settings() {
       read -r -p "DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
       
       # Basic validation
-      if [[ -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
-        echo -e "${RED}Error: IP address, netmask, and gateway are required for static configuration${NC}"
+      if [[ -z "$static_iface" || -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
+        echo -e "${RED}Error: Interface name, IP address, netmask, and gateway are required for static configuration${NC}"
         echo "Please provide all required fields."
         echo ""
       else
@@ -1016,6 +1026,7 @@ root_fs="${root_fs:-ext4}"
 
 # Network settings
 network_config="${network_config:-dhcp}"
+static_iface="${static_iface:-}"
 static_ip="${static_ip:-}"
 static_netmask="${static_netmask:-}"
 static_gateway="${static_gateway:-}"
