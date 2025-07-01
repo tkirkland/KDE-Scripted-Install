@@ -1,5 +1,4 @@
 #!/bin/bash
-# shellcheck disable=SC2218
 
 # KDE Neon Automated Installer
 # Based on extracted Calamares installation commands
@@ -8,7 +7,6 @@
 
 set -euo pipefail
 
-
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -16,20 +14,10 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-# Global variables (initialized in main()
-dry_run=false
-log_file=""
-custom_config=""
-force_mode=false
-debug=false
-show_win=false
-target_drive=""
-install_root=""
-
-# Display message in dry-run mode or log normally
+# Display a message in dry-run mode or log normally
 dry_echo() {
   local message="$*"
-  if [[ "$dry_run" == "true" ]]; then
+  if [[ $dry_run == "true"   ]]; then
     echo "$message"
   else
     log "INFO" "$message"
@@ -44,7 +32,7 @@ log() {
   local timestamp
   timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
-  # Write timestamped entry to log file only
+  # Write a timestamped entry to log a file only
   echo "[$timestamp] [$level] $message" >> "$log_file"
 
   # Display only ERROR and WARN messages to screen
@@ -56,7 +44,7 @@ log() {
       echo -e "${YELLOW}WARNING: $message${NC}" >&2
       ;;
     "DEBUG")
-      [[ "$debug" == "true" ]] && echo -e "${BLUE}DEBUG: $message${NC}"
+      [[ $debug == "true"   ]] && echo -e "${BLUE}DEBUG: $message${NC}"
       ;;
   esac
 }
@@ -72,15 +60,15 @@ execute_cmd() {
   local cmd="$1"
   local description="${2:-}"
 
-  if [[ "$dry_run" == "true" ]]; then
-    if [[ -n "$description" ]]; then
+  if [[ $dry_run == "true"   ]]; then
+    if [[ -n $description   ]]; then
       echo "[DRY-RUN] $description"
     fi
     echo "[DRY-RUN] Would execute: $cmd"
     return 0
   fi
 
-  if [[ -n "$description" ]]; then
+  if [[ -n $description   ]]; then
     log "INFO" "$description"
   fi
 
@@ -171,7 +159,7 @@ check_uefi() {
 
 # Test network connectivity (required for package downloads)
 check_network() {
-  if ! ping -c 1 8.8.8.8 &>/dev/null; then
+  if ! ping -c 1 8.8.8.8 &> /dev/null; then
     error_exit "Network connectivity required for installation"
   fi
   log "INFO" "Network connectivity confirmed"
@@ -183,16 +171,16 @@ enumerate_nvme_drives() {
   local drive
 
   for drive in /dev/nvme*n*; do
-    if [[ -b "$drive" && "$drive" =~ /dev/nvme[0-9]+n[0-9]+$ ]]; then
+    if [[ -b $drive && $drive =~ /dev/nvme[0-9]+n[0-9]+$     ]]; then
       # Check if it's an internal drive (not USB)
       local drive_name
       drive_name=$(basename "$drive")
       local sys_path="/sys/block/$drive_name"
 
-      if [[ -e "$sys_path" ]]; then
+      if [[ -e $sys_path   ]]; then
         local removable
-        removable=$(cat "$sys_path/removable" 2>/dev/null || echo "0")
-        if [[ "$removable" == "0" ]]; then
+        removable=$(cat "$sys_path/removable" 2> /dev/null || echo "0")
+        if [[ $removable == "0"   ]]; then
           drives+=("$drive")
         fi
       fi
@@ -205,16 +193,16 @@ enumerate_nvme_drives() {
 # Check for global Windows EFI entries (system-wide, not drive-specific)
 detect_windows_efi() {
   # Method 1: Check for Windows Boot Manager in EFI
-  if efibootmgr | grep -i "Windows Boot Manager" &>/dev/null; then
-    if [[ "$show_win" == "true" ]]; then
+  if efibootmgr | grep -i "Windows Boot Manager" &> /dev/null; then
+    if [[ $show_win == "true"   ]]; then
       log "WARN" "Windows Boot Manager detected in EFI"
     fi
     return 0
   fi
 
   # Method 2: Check for Microsoft EFI entries
-  if efibootmgr | grep -i "Microsoft" &>/dev/null; then
-    if [[ "$show_win" == "true" ]]; then
+  if efibootmgr | grep -i "Microsoft" &> /dev/null; then
+    if [[ $show_win == "true"   ]]; then
       log "WARN" "Microsoft EFI entry detected"
     fi
     return 0
@@ -230,72 +218,72 @@ detect_windows() {
   # Check partitions for Windows signatures
   local partition
   for partition in "${drive}"p*; do
-    if [[ -b "$partition" ]]; then
+    if [[ -b $partition   ]]; then
       local fs_type
       local label
       local uuid
-      fs_type=$(blkid -o value -s TYPE "$partition" 2>/dev/null || echo "")
-      label=$(blkid -o value -s LABEL "$partition" 2>/dev/null || echo "")
-      uuid=$(blkid -o value -s UUID "$partition" 2>/dev/null || echo "")
+      fs_type=$(blkid -o value -s TYPE "$partition" 2> /dev/null || echo "")
+      label=$(blkid -o value -s LABEL "$partition" 2> /dev/null || echo "")
+      uuid=$(blkid -o value -s UUID "$partition" 2> /dev/null || echo "")
 
       # Method 4: Check for Windows-specific filesystem signatures
-      if [[ "$fs_type" == "ntfs" ]]; then
+      if [[ $fs_type == "ntfs"   ]]; then
         # Mount temporarily to check for Windows directories
         local temp_mount="/tmp/win_check_$$"
         mkdir -p "$temp_mount"
-        if mount -t ntfs -o ro "$partition" "$temp_mount" 2>/dev/null; then
+        if mount -t ntfs -o ro "$partition" "$temp_mount" 2> /dev/null; then
           # Check for Windows directory structure
-          if [[ -d "$temp_mount/Windows" ]] || [[ -d "$temp_mount/windows" ]] || 
-             [[ -f "$temp_mount/bootmgr" ]] || [[ -f "$temp_mount/BOOTMGR" ]] ||
-             [[ -d "$temp_mount/System Volume Information" ]]; then
-            umount "$temp_mount" 2>/dev/null
-            rmdir "$temp_mount" 2>/dev/null
+          if [[ -d "$temp_mount/Windows" ]] || [[ -d "$temp_mount/windows" ]] \
+                                                                              || [[ -f "$temp_mount/bootmgr" ]] || [[ -f "$temp_mount/BOOTMGR" ]] \
+                                                                              || [[ -d "$temp_mount/System Volume Information" ]]; then
+            umount "$temp_mount" 2> /dev/null
+            rmdir "$temp_mount" 2> /dev/null
             # Windows installation detected on partition
             return 0
           fi
-          umount "$temp_mount" 2>/dev/null
+          umount "$temp_mount" 2> /dev/null
         fi
-        rmdir "$temp_mount" 2>/dev/null
-        
+        rmdir "$temp_mount" 2> /dev/null
+
         # Even if we can't mount, NTFS is suspicious
         # NTFS partition found - potential Windows installation
         return 0
       fi
 
       # Method 5: Check for Windows-specific labels
-      if [[ "$label" =~ ^(Windows|System|Recovery|Microsoft|EFI|BOOT)$ ]]; then
+      if [[ $label =~ ^(Windows|System|Recovery|Microsoft|EFI|BOOT)$   ]]; then
         # Windows-related partition label detected
         return 0
       fi
 
       # Method 6: Check for EFI system partition with Windows content
-      if [[ "$fs_type" == "vfat" ]] && [[ "$label" =~ ^(EFI|SYSTEM)$ ]]; then
+      if [[ $fs_type == "vfat"   ]] && [[ $label =~ ^(EFI|SYSTEM)$   ]]; then
         local temp_mount="/tmp/efi_check_$$"
         mkdir -p "$temp_mount"
-        if mount -t vfat -o ro "$partition" "$temp_mount" 2>/dev/null; then
-          # Check for Microsoft boot files in EFI partition
+        if mount -t vfat -o ro "$partition" "$temp_mount" 2> /dev/null; then
+          # Check for Microsoft boot files in the EFI partition
           if [[ -d "$temp_mount/EFI/Microsoft" ]] || [[ -d "$temp_mount/EFI/Boot" ]]; then
-            umount "$temp_mount" 2>/dev/null
-            rmdir "$temp_mount" 2>/dev/null
+            umount "$temp_mount" 2> /dev/null
+            rmdir "$temp_mount" 2> /dev/null
             # Windows EFI boot files detected
             return 0
           fi
-          umount "$temp_mount" 2>/dev/null
+          umount "$temp_mount" 2> /dev/null
         fi
-        rmdir "$temp_mount" 2>/dev/null
+        rmdir "$temp_mount" 2> /dev/null
       fi
     fi
   done
 
   # Method 7: Check for Windows Registry hives or hiberfil.sys
   for partition in "${drive}"p*; do
-    if [[ -b "$partition" ]]; then
+    if [[ -b $partition   ]]; then
       # Use file command to check for Windows-specific file signatures
-      if command -v file >/dev/null 2>&1; then
+      if command -v file > /dev/null 2>&1; then
         # Check for NTFS volume with the Windows boot sector
         local fs_sig
-        fs_sig=$(file -s "$partition" 2>/dev/null | grep -i "ntfs\|windows\|microsoft")
-        if [[ -n "$fs_sig" ]]; then
+        fs_sig=$(file -s "$partition" 2> /dev/null | grep -i "ntfs\|windows\|microsoft")
+        if [[ -n $fs_sig   ]]; then
           # Windows filesystem signature detected
           return 0
         fi
@@ -338,33 +326,33 @@ select_target_drive() {
   done
 
   # Handle Windows drives based on flags
-  if [[ "$windows_detected" == "true" ]]; then
-    if [[ "$show_win" == "true" ]]; then
+  if [[ $windows_detected == "true"   ]]; then
+    if [[ $show_win == "true"   ]]; then
       log "WARN" "Windows installation detected on drives: ${windows_drives[*]} - included in selection (--show-win enabled)"
       # Keep all drives including Windows ones
       drives=("${drives[@]}")
     else
-      # Silently exclude Windows drives - no warning needed since this is default behavior
+      # Silently exclude Windows drives - no warning needed since this is the default behavior
       # Check if we have any safe drives left
       if [[ ${#safe_drives[@]} -eq 0 ]]; then
-        if [[ "$force_mode" == "true" ]]; then
+        if [[ $force_mode == "true"   ]]; then
           log "WARN" "Force mode enabled - using all drives despite Windows detection"
           drives=("${drives[@]}")
         else
           error_exit "No safe drives available. All drives contain Windows installations. Use --show-win or --force to override."
         fi
       else
-        # Update drives array to only safe drives
+        # Update a drive array to only safe drives
         drives=("${safe_drives[@]}")
       fi
     fi
   fi
 
   # Display EFI warning separately (doesn't exclude drives)
-  if [[ "$windows_efi_detected" == "true" && "$force_mode" == "false" ]]; then
-    if [[ "$dry_run" == "false" ]]; then
+  if [[ $windows_efi_detected == "true" && $force_mode == "false"     ]]; then
+    if [[ $dry_run == "false"   ]]; then
       read -r -p "Windows EFI entries detected. Continue with installation? (y/N): " confirm
-      if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      if [[ ! $confirm =~ ^[Yy]$   ]]; then
         error_exit "Installation cancelled by user"
       fi
     fi
@@ -383,31 +371,32 @@ select_target_drive() {
       local size_gb
       local model
       local windows_flag=""
-      size=$(lsblk -b -d -o SIZE "$drive" 2>/dev/null | tail -n1)
+      size=$(lsblk -b -d -o SIZE "$drive" 2> /dev/null | tail -n1)
       size_gb=$((size / 1024 / 1024 / 1024))
-      model=$(lsblk -d -o MODEL "$drive" 2>/dev/null | tail -n1)
-      
-      # Add Windows indicator if --show-win is enabled
-      if [[ "$show_win" == "true" ]]; then
+      model=$(lsblk -d -o MODEL "$drive" 2> /dev/null | tail -n1)
+
+      # Add a Windows indicator if --show-win is enabled
+      local windows_drive
+      if [[ $show_win == "true"   ]]; then
         for windows_drive in "${windows_drives[@]}"; do
-          if [[ "$drive" == "$windows_drive" ]]; then
+          if [[ $drive == "$windows_drive"   ]]; then
             windows_flag=" (Windows detected)"
             break
           fi
         done
       fi
 
-      echo "  $((i+1)). $drive - ${size_gb}GB - $model$windows_flag"
+      echo "  $((i + 1)). $drive - ${size_gb}GB - $model$windows_flag"
     done
 
-    if [[ "$dry_run" == "true" ]]; then
+    if [[ $dry_run == "true"   ]]; then
       target_drive="${drives[0]}"
       echo "[DRY-RUN] Auto-selecting first drive: $target_drive"
     else
       local selection
       read -r -p "Select drive (1-${#drives[@]}): " selection
-      if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le ${#drives[@]} ]]; then
-        target_drive="${drives[$((selection-1))]}"
+      if [[ $selection =~ ^[0-9]+$   ]] && [[ $selection -ge 1   ]] && [[ $selection -le ${#drives[@]}   ]]; then
+        target_drive="${drives[$((selection - 1))]}"
       else
         error_exit "Invalid selection"
       fi
@@ -421,7 +410,7 @@ select_target_drive() {
 load_configuration() {
   local config_file="${custom_config:-$default_config_file}"
 
-  if [[ -f "$config_file" ]]; then
+  if [[ -f $config_file   ]]; then
     log "INFO" "Loading configuration from: $config_file"
     # shellcheck source=/dev/null
     source "$config_file"
@@ -459,7 +448,7 @@ ROOT_FS="${ROOT_FS:-ext4}"
 NETWORK_CONFIG="${NETWORK_CONFIG:-dhcp}"
 EOF
 
-  if [[ "$dry_run" == "false" ]]; then
+  if [[ $dry_run == "false"   ]]; then
     chmod 600 "$config_file"
   fi
 }
@@ -534,11 +523,11 @@ phase3_system_installation() {
   # Mount installation source (live ISO or DVD)
   execute_cmd "mkdir -p /mnt/source" "Creating source mount point"
   execute_cmd "mount -o ro /dev/sr0 /mnt/source 2>/dev/null || mount -o ro /dev/cdrom /mnt/source || true" "Mounting installation media"
-  
+
   # Extract squashfs filesystem (KDE Neon installation method)
   execute_cmd "mkdir -p /mnt/squashfs" "Creating squashfs mount point"
   execute_cmd "mount -o loop /mnt/source/casper/filesystem.squashfs /mnt/squashfs" "Mounting squashfs filesystem"
-  
+
   # Copy system files from squashfs (this will take several minutes)
   log "INFO" "Extracting system files from squashfs (this will take several minutes)..."
   execute_cmd "rsync -av \
@@ -586,7 +575,7 @@ phase4_bootloader_configuration() {
   execute_cmd "chroot $install_root update-grub" "Generating GRUB configuration"
 
   # Update fstab
-  if [[ "$dry_run" == "true" ]]; then
+  if [[ $dry_run == "true"   ]]; then
     echo "[DRY-RUN] Creating /etc/fstab with root and EFI partitions"
     echo "[DRY-RUN] Would write fstab entries for ${drive}p1 and ${drive}p2"
   else
@@ -670,17 +659,29 @@ main() {
 
   # Initialize global variables
   install_root="$default_install_root"
+  dry_run=false
+  log_file=""
+  custom_config=""
+  force_mode=false
+  debug=false
+  show_win=false
+  target_drive=""
+  install_root=""
+
+  if [[ ${BASH_SOURCE[0]} != "${0}" ]]; then
+    exit 0
+  fi
 
   # Parse command line arguments first
   parse_arguments "$@"
 
   # Set default log file if not specified
-  if [[ -z "$log_file" ]]; then
+  if [[ -z $log_file   ]]; then
     log_file="${script_dir}/logs/kde-install-$(date +%Y%m%d-%H%M%S).log"
   fi
 
   # Check root privileges immediately (except for help/dry-run)
-  if [[ "$dry_run" == "false" ]]; then
+  if [[ $dry_run == "false"   ]]; then
     check_root
   fi
 
@@ -696,13 +697,13 @@ main() {
   # Select the target drive
   select_target_drive
 
-  # Check if installation directory exists and has data
-  if [[ -d "$install_root" ]] && [[ -n "$(ls -A "$install_root" 2>/dev/null)" ]]; then
+  # Check if the installation directory exists and has data
+  if [[ -d $install_root   ]] && [[ -n "$(ls -A "$install_root" 2> /dev/null)" ]]; then
     echo -e "\n${YELLOW}WARNING: Installation directory $install_root already exists and contains data.${NC}"
-    if [[ "$dry_run" == "false" ]]; then
+    if [[ $dry_run == "false"   ]]; then
       echo "This data will be lost during installation."
       read -r -p "Continue and remove existing data? (y/N): " confirm
-      if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      if [[ ! $confirm =~ ^[Yy]$   ]]; then
         log "INFO" "Installation cancelled by user"
         exit 0
       fi
@@ -716,7 +717,7 @@ main() {
   save_configuration
 
   # Confirm installation
-  if [[ "$dry_run" == "false" ]]; then
+  if [[ $dry_run == "false"   ]]; then
     echo -e "\n${YELLOW}Installation Summary:${NC}"
     echo -e "Target Drive: ${GREEN}$target_drive${NC}"
     echo -e "Installation Root: ${GREEN}$install_root${NC}"
@@ -724,7 +725,7 @@ main() {
     echo
 
     read -r -p "Proceed with installation? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    if [[ ! $confirm =~ ^[Yy]$   ]]; then
       log "INFO" "Installation cancelled by user"
       exit 0
     fi
@@ -735,6 +736,4 @@ main() {
   log "INFO" "KDE Neon Automated Installer completed"
 }
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  main "$@"
-fi
+main "$@"
