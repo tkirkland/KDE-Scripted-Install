@@ -465,7 +465,7 @@ configure_network_settings() {
 configure_dhcp_network() {
   log "INFO" "Setting up DHCP network configuration"
   
-  # Create systemd-networkd configuration for DHCP
+  # Create a systemd-networkd configuration for DHCP
   local network_config_dir="$install_root/etc/systemd/network"
   execute_cmd "mkdir -p $network_config_dir" "Creating systemd-networkd config directory"
   
@@ -494,7 +494,7 @@ EOF
   execute_cmd "chroot $install_root systemctl enable systemd-resolved" "Enabling systemd-resolved"
 }
 
-# Configure static IP network using systemd-networkd
+# Configure a static IP network using systemd-networkd
 configure_static_network() {
   log "INFO" "Setting up static network configuration"
   
@@ -545,6 +545,7 @@ IPForward=no
 EOF
 
     # Add domain search entries if provided
+    local domain
     if [[ -n "$static_domain_search" ]]; then
       for domain in $static_domain_search; do
         echo "Domains=$domain" >> "$network_config_dir/20-wired.network"
@@ -552,6 +553,7 @@ EOF
     fi
     
     # Add DNS suffix entries if provided (using Domains= in systemd-networkd)
+    local suffix
     if [[ -n "$static_dns_suffix" ]]; then
       for suffix in $static_dns_suffix; do
         echo "Domains=$suffix" >> "$network_config_dir/20-wired.network"
@@ -572,13 +574,13 @@ EOF
 configure_manual_network() {
   log "INFO" "Manual network configuration selected - skipping automatic setup"
   
-  # Create a placeholder file to indicate manual configuration was chosen
+  # Create a placeholder file to indicate a manual configuration was chosen
   if [[ $dry_run == "true" ]]; then
     echo "[DRY-RUN] Would create manual network indicator file"
   else
     cat > "$install_root/etc/kde-neon-manual-network" << 'EOF'
 # Manual network configuration was selected during installation
-# Please configure your network settings manually after first boot
+# Please configure your network settings manually after the first boot
 # Common options:
 #   - Use NetworkManager GUI (System Settings > Network)
 #   - Configure systemd-networkd (/etc/systemd/network/)
