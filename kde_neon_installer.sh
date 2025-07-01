@@ -328,6 +328,119 @@ detect_windows() {
   return 1
 }
 
+# Check existing KDE entries and prompt user about non-target-drive entries
+check_existing_kde_entries() {
+  local target_drive="$1"
+  local target_efi_partition="${target_drive}p1"
+  
+  log "INFO" "Checking for existing KDE boot entries..."
+  
+  # Get all KDE-related boot entries with full details
+  local kde_entries_info
+  kde_entries_info=$(efibootmgr -v | grep -E "(KDE|neon)" || true)
+  
+  if [[ -z "$kde_entries_info" ]]; then
+    log "INFO" "No existing KDE boot entries found"
+    return 0
+  fi
+  
+  # Parse entries and separate target-drive vs. other-drive entries
+  local target_drive_entries=()
+  local other_drive_entries=()
+  local entry_details=()
+  local line
+  
+  while IFS= read -r line; do
+    if [[ -n "$line" ]]; then
+      local boot_num
+      boot_num=$(echo "$line" | sed -n 's/Boot\([0-9A-F]\{4\}\).*/\1/p')
+      local boot_name
+      boot_name=$(echo "$line" | sed -n 's/Boot[0-9A-F]\{4\}[*]*[ ]*\([^[:space:]]*\).*/\1/p' || echo "Unknown")
+      local boot_path
+      boot_path=$(echo "$line" | grep -o 'HD([^)]*)' || echo "Unknown")
+      
+      if [[ -n "$boot_num" ]]; then
+        # Try to determine if this entry references our target drive
+        # This is a best-effort approach since EFI paths can be complex
+        local references_target="false"
+        
+        # Check if the EFI partition path matches our target
+        if [[ "$boot_path" == *"$target_efi_partition"* ]] || [[ "$boot_path" == *"$(basename "$target_drive")"* ]]; then
+          references_target="true"
+        fi
+        
+        if [[ "$references_target" == "true" ]]; then
+          target_drive_entries+=("$boot_num")
+        else
+          other_drive_entries+=("$boot_num")
+          entry_details+=("Boot$boot_num: $boot_name ($boot_path)")
+        fi
+      fi
+    fi
+  done <<< "$kde_entries_info"
+  
+  # Remove entries that reference our target drive (old installations to the same drive)
+  if [[ ${#target_drive_entries[@]} -gt 0 ]]; then
+    log "INFO" "Found ${#target_drive_entries[@]} existing KDE entries on target drive $target_drive"
+    local entry_id
+    for entry_id in "${target_drive_entries[@]}"; do
+      if [[ -n "$entry_id" ]]; then
+        execute_cmd "efibootmgr -b $entry_id -B" "Removing previous KDE entry on target drive (Boot$entry_id)"
+      fi
+    done
+  fi
+  
+  # Prompt user about entries on other drives
+  if [[ ${#other_drive_entries[@]} -gt 0 ]]; then
+    echo ""
+    echo -e "${YELLOW}Found ${#other_drive_entries[@]} existing KDE boot entries on other drives:${NC}"
+    echo ""
+    local detail
+    for detail in "${entry_details[@]}"; do
+      echo "  $detail"
+    done
+    echo ""
+    echo -e "${YELLOW}Important Notes:${NC}"
+    echo "• These entries are NOT from the current installation (which targets $target_drive)"
+    echo "• These may be legitimate KDE installations on other drives"
+    echo "• It is YOUR responsibility to determine which entries are valid"
+    echo "• The new KDE entry for this installation will be created separately"
+    echo ""
+    
+    if [[ $dry_run == "false" ]]; then
+      local remove_others
+      read -p "Do you want to remove any of these entries? [y/N]: " -r remove_others
+      if [[ $remove_others =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "Select entries to remove (enter boot numbers separated by spaces, or 'none'):"
+        local i
+        for i in "${!entry_details[@]}"; do
+          echo "  $((i+1)). ${entry_details[$i]}"
+        done
+        echo ""
+        local selected_entries
+        read -p "Enter boot numbers to remove (e.g., 0001 0003): " -r selected_entries
+        
+        if [[ "$selected_entries" != "none" ]] && [[ -n "$selected_entries" ]]; then
+          local boot_num
+          for boot_num in $selected_entries; do
+            # Validate a boot number format
+            if [[ "$boot_num" =~ ^[0-9A-Fa-f]{4}$ ]]; then
+              execute_cmd "efibootmgr -b $boot_num -B" "Removing selected KDE entry (Boot$boot_num)"
+            else
+              log "WARN" "Invalid boot number format: $boot_num (expected 4-digit hex)"
+            fi
+          done
+        fi
+      fi
+    else
+      echo "[DRY-RUN] Would prompt user about removing these entries"
+    fi
+  fi
+  
+  return 0
+}
+
 # Interactive drive selection with Windows detection and safety checks
 select_target_drive() {
   log "INFO" "Enumerating NVMe drives..."
@@ -844,7 +957,7 @@ phase3_system_installation() {
   execute_cmd "chmod 600 $install_root/swapfile" "Setting swap file permissions"
   execute_cmd "mkswap $install_root/swapfile" "Formatting swap file"
 
-  # Copy kernel files from casper directory (not included in squashfs)
+  # Copy kernel files from the casper directory (not included in squashfs)
   local kernel_source=""
   if [[ -f "/run/live/medium/casper/vmlinuz" ]]; then
     kernel_source="/run/live/medium/casper"
@@ -918,16 +1031,8 @@ phase4_bootloader_configuration() {
     fi
   fi
   
-  # Remove old KDE neon entries that don't match our new installation
-  # Only remove entries pointing to /EFI/neon/ (old format), keep /EFI/KDE Neon/ (new format)
-  local old_kde_entries
-  mapfile -t old_kde_entries < <(efibootmgr | grep -E "(KDE neon User Edition|neon.*shimx64)" | grep "\\\\neon\\\\shimx64.efi" | sed 's/Boot\([0-9A-F]\{4\}\).*/\1/')
-  
-  for entry_id in "${old_kde_entries[@]}"; do
-    if [[ -n "$entry_id" ]]; then
-      execute_cmd "efibootmgr -b $entry_id -B" "Removing old KDE neon entry (Boot$entry_id)"
-    fi
-  done
+  # Check for existing KDE entries that don't reference our target drive
+  check_existing_kde_entries "$target_drive"
 
   # Update fstab
   if [[ $dry_run == "true"   ]]; then
