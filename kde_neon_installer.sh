@@ -828,6 +828,35 @@ phase3_system_installation() {
   execute_cmd "chmod 600 $install_root/swapfile" "Setting swap file permissions"
   execute_cmd "mkswap $install_root/swapfile" "Formatting swap file"
 
+  # Copy kernel files from casper directory (not included in squashfs)
+  local kernel_source=""
+  if [[ -f "/run/live/medium/casper/vmlinuz" ]]; then
+    kernel_source="/run/live/medium/casper"
+  elif [[ -f "/lib/live/mount/medium/casper/vmlinuz" ]]; then
+    kernel_source="/lib/live/mount/medium/casper"
+  elif [[ -f "/cdrom/casper/vmlinuz" ]]; then
+    kernel_source="/cdrom/casper"
+  elif [[ -f "/mnt/source/casper/vmlinuz" ]]; then
+    kernel_source="/mnt/source/casper"
+  fi
+  
+  if [[ -n "$kernel_source" ]]; then
+    # Find the actual kernel version from the installed system
+    local kernel_version
+    kernel_version=$(ls "$install_root/lib/modules/" | head -n1)
+    if [[ -n "$kernel_version" ]]; then
+      execute_cmd "cp '$kernel_source/vmlinuz' '$install_root/boot/vmlinuz-$kernel_version'" "Copying kernel image"
+      execute_cmd "cp '$kernel_source/initrd' '$install_root/boot/initrd.img-$kernel_version'" "Copying initial ramdisk"
+      log "INFO" "Kernel files copied for version: $kernel_version"
+    else
+      log "WARN" "Could not determine kernel version, copying with generic names"
+      execute_cmd "cp '$kernel_source/vmlinuz' '$install_root/boot/vmlinuz'" "Copying kernel image"
+      execute_cmd "cp '$kernel_source/initrd' '$install_root/boot/initrd.img'" "Copying initial ramdisk"
+    fi
+  else
+    log "WARN" "Could not find kernel files in casper directory"
+  fi
+
   # Unmount installation source
   execute_cmd "umount /mnt/squashfs 2>/dev/null || true" "Unmounting squashfs filesystem"
   execute_cmd "umount /mnt/source 2>/dev/null || true" "Unmounting installation media"
@@ -860,6 +889,29 @@ phase4_bootloader_configuration() {
 
   # Update initramfs after GRUB configuration
   execute_cmd "chroot $install_root update-initramfs -u -k all" "Updating initramfs for all kernels"
+
+  # Clean up conflicting EFI boot entries to avoid boot menu confusion
+  log "INFO" "Cleaning up EFI boot entries to avoid conflicts with GRUB"
+  
+  # Remove systemd-boot entries (Linux Boot Manager)
+  if efibootmgr | grep -q "Linux Boot Manager"; then
+    local systemd_boot_id
+    systemd_boot_id=$(efibootmgr | grep "Linux Boot Manager" | sed 's/Boot\([0-9A-F]\{4\}\).*/\1/')
+    if [[ -n "$systemd_boot_id" ]]; then
+      execute_cmd "efibootmgr -b $systemd_boot_id -B" "Removing systemd-boot entry (Boot$systemd_boot_id)"
+    fi
+  fi
+  
+  # Remove old KDE neon entries that don't match our new installation
+  # Only remove entries pointing to /EFI/neon/ (old format), keep /EFI/KDE Neon/ (new format)
+  local old_kde_entries
+  mapfile -t old_kde_entries < <(efibootmgr | grep -E "(KDE neon User Edition|neon.*shimx64)" | grep "\\\\neon\\\\shimx64.efi" | sed 's/Boot\([0-9A-F]\{4\}\).*/\1/')
+  
+  for entry_id in "${old_kde_entries[@]}"; do
+    if [[ -n "$entry_id" ]]; then
+      execute_cmd "efibootmgr -b $entry_id -B" "Removing old KDE neon entry (Boot$entry_id)"
+    fi
+  done
 
   # Update fstab
   if [[ $dry_run == "true"   ]]; then
