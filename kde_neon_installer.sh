@@ -46,7 +46,9 @@ log() {
       echo -e "${YELLOW}WARNING: $message${NC}" >&2
       ;;
     "DEBUG")
-      [[ $debug == "true"   ]] && echo -e "${BLUE}DEBUG: $message${NC}" || true
+      if [[ $debug == "true" ]]; then
+        echo -e "${BLUE}DEBUG: $message${NC}"
+      fi
       ;;
   esac
 }
@@ -244,10 +246,9 @@ detect_windows() {
     if [[ -b $partition   ]]; then
       local fs_type
       local label
-      local uuid
       fs_type=$(blkid -o value -s TYPE "$partition" 2> /dev/null || echo "")
       label=$(blkid -o value -s LABEL "$partition" 2> /dev/null || echo "")
-      uuid=$(blkid -o value -s UUID "$partition" 2> /dev/null || echo "")
+      # uuid=$(blkid -o value -s UUID "$partition" 2> /dev/null || echo "")
 
       
       # Method 4: Check for Windows-specific filesystem signatures
@@ -468,7 +469,7 @@ load_configuration() {
     source "$config_file"
     echo -e "${GREEN}✓ Configuration loaded${NC}"
     
-    # Show current settings to user
+    # Show current settings to the user
     echo
     echo -e "${YELLOW}Current Settings:${NC}"
     echo "  Locale: ${locale:-en_US.UTF-8}"
@@ -531,9 +532,9 @@ detect_timezone_geoip() {
       grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
   fi
   
-  # Fallback to ipinfo.io if first attempt failed
+  # Fallback to ipinfo.io if the first attempt failed
   if [[ -z "$detected_tz" ]] && command -v curl >/dev/null 2>&1; then
-    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "http://ipinfo.io/json" 2>/dev/null | \
+    detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "https://ipinfo.io/json" 2>/dev/null | \
       grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
   fi
   
@@ -586,7 +587,7 @@ get_locale_for_country() {
 detect_locale() {
   local detected_locale=""
   
-  # First try system locale (highest priority if set)
+  # First, try system locale (the highest priority if set)
   if [[ -n "$LANG" && "$LANG" != "C" && "$LANG" != "POSIX" ]]; then
     detected_locale="$LANG"
   elif [[ -f /etc/default/locale ]]; then
@@ -757,6 +758,7 @@ phase2_partitioning() {
 
 # Phase 3: Mount filesystems, copy system files, and create a swap
 phase3_system_installation() {
+  local device
   echo
   dry_echo "=== Phase 3: Installing KDE Neon system files ==="
 
@@ -774,10 +776,10 @@ phase3_system_installation() {
   execute_cmd "mkdir -p $install_root/boot/efi" "Creating EFI mount point"
   execute_cmd "mount $efi_part $install_root/boot/efi" "Mounting EFI partition"
 
-  # Find and mount installation source (live filesystem)
+  # Find and mount an installation source (live filesystem)
   execute_cmd "mkdir -p /mnt/squashfs" "Creating squashfs mount point"
   
-  # Try to find the squashfs filesystem directly from live system
+  # Try to find the squashfs filesystem directly from a live system
   local squashfs_path=""
   if [[ -f "/run/live/medium/casper/filesystem.squashfs" ]]; then
     squashfs_path="/run/live/medium/casper/filesystem.squashfs"
@@ -936,7 +938,7 @@ main_installation() {
   log "INFO" "Installation completed successfully!"
   log "INFO" "System is ready to reboot"
   
-  # Display completion message to user
+  # Display a completion message to the user
   echo
   echo -e "${GREEN}🎉 KDE Neon Installation Complete! 🎉${NC}"
   echo
@@ -964,6 +966,7 @@ main() {
   # Initialize constants
   local script_dir
   local default_install_root
+  local mountpoint
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   readonly script_dir
   readonly default_config_file="${script_dir}/install.conf"
@@ -1036,7 +1039,7 @@ main() {
     echo "This appears to be from a previous installation attempt."
     echo ""
     
-    # Check if anything is mounted in the install root
+    # Check if anything is mounted in the installation root
     if mount | grep -q "$install_root"; then
       echo -e "${YELLOW}Warning: Filesystems are mounted in $install_root${NC}"
       if [[ $dry_run == "false" ]]; then
