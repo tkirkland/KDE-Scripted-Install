@@ -149,14 +149,13 @@ parse_arguments() {
 # Check if running as the root user (required for installation)
 check_root() {
   if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}Root privileges required${NC}"
-    echo "This installer needs to modify system partitions and install software."
-    echo "Attempting to relaunch with sudo..."
-    
     # Try to relaunch with sudo, preserving all arguments
     if command -v sudo >/dev/null 2>&1; then
+      echo "Attempting to relaunch with sudo..."
       exec sudo "$0" "$@"
     else
+      echo -e "${RED}Root privileges required${NC}"
+      echo "This installer needs to modify system partitions and install software."
       echo -e "${RED}Error: sudo not available${NC}"
       echo "Please run as root or install sudo, then run: sudo $0"
       exit 1
