@@ -441,6 +441,155 @@ check_existing_kde_entries() {
   return 0
 }
 
+# Configure network settings based on user choice
+configure_network_settings() {
+  log "INFO" "Configuring network settings: $network_config"
+  
+  case "$network_config" in
+    dhcp)
+      configure_dhcp_network
+      ;;
+    static)
+      configure_static_network
+      ;;
+    manual)
+      configure_manual_network
+      ;;
+    *)
+      log "WARN" "Unknown network configuration: $network_config, using DHCP"
+      configure_dhcp_network
+      ;;
+  esac
+}
+
+# Configure DHCP network using systemd-networkd
+configure_dhcp_network() {
+  log "INFO" "Setting up DHCP network configuration"
+  
+  # Create systemd-networkd configuration for DHCP
+  local network_config_dir="$install_root/etc/systemd/network"
+  execute_cmd "mkdir -p $network_config_dir" "Creating systemd-networkd config directory"
+  
+  # Create DHCP configuration for wired interfaces
+  if [[ $dry_run == "true" ]]; then
+    echo "[DRY-RUN] Would create DHCP network configuration in $network_config_dir/20-wired.network"
+  else
+    cat > "$network_config_dir/20-wired.network" << 'EOF'
+[Match]
+Name=en*
+Name=eth*
+
+[Network]
+DHCP=yes
+IPForward=no
+
+[DHCP]
+UseDNS=yes
+UseNTP=yes
+EOF
+    log "INFO" "Created DHCP network configuration"
+  fi
+  
+  # Enable systemd-networkd
+  execute_cmd "chroot $install_root systemctl enable systemd-networkd" "Enabling systemd-networkd"
+  execute_cmd "chroot $install_root systemctl enable systemd-resolved" "Enabling systemd-resolved"
+}
+
+# Configure static IP network using systemd-networkd
+configure_static_network() {
+  log "INFO" "Setting up static network configuration"
+  
+  if [[ -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
+    log "WARN" "Missing static network parameters, falling back to DHCP"
+    configure_dhcp_network
+    return
+  fi
+  
+  # Convert netmask to CIDR if needed
+  local cidr_mask
+  case "$static_netmask" in
+    255.255.255.0) cidr_mask="24" ;;
+    255.255.0.0) cidr_mask="16" ;;
+    255.0.0.0) cidr_mask="8" ;;
+    255.255.255.128) cidr_mask="25" ;;
+    255.255.255.192) cidr_mask="26" ;;
+    255.255.255.224) cidr_mask="27" ;;
+    255.255.255.240) cidr_mask="28" ;;
+    255.255.255.248) cidr_mask="29" ;;
+    255.255.255.252) cidr_mask="30" ;;
+    *) cidr_mask="24" ;; # Default to /24
+  esac
+  
+  local network_config_dir="$install_root/etc/systemd/network"
+  execute_cmd "mkdir -p $network_config_dir" "Creating systemd-networkd config directory"
+  
+  # Create static IP configuration
+  if [[ $dry_run == "true" ]]; then
+    echo "[DRY-RUN] Would create static network configuration:"
+    echo "  IP: $static_ip/$cidr_mask"
+    echo "  Gateway: $static_gateway"
+    echo "  DNS: ${static_dns:-8.8.8.8,8.8.4.4}"
+    [[ -n "$static_domain_search" ]] && echo "  Domain Search: $static_domain_search"
+    [[ -n "$static_dns_suffix" ]] && echo "  DNS Suffix: $static_dns_suffix"
+  else
+    # Start building the network config
+    cat > "$network_config_dir/20-wired.network" << EOF
+[Match]
+Name=en*
+Name=eth*
+
+[Network]
+Address=$static_ip/$cidr_mask
+Gateway=$static_gateway
+DNS=${static_dns:-8.8.8.8}
+DNS=${static_dns##*,}
+IPForward=no
+EOF
+
+    # Add domain search entries if provided
+    if [[ -n "$static_domain_search" ]]; then
+      for domain in $static_domain_search; do
+        echo "Domains=$domain" >> "$network_config_dir/20-wired.network"
+      done
+    fi
+    
+    # Add DNS suffix entries if provided (using Domains= in systemd-networkd)
+    if [[ -n "$static_dns_suffix" ]]; then
+      for suffix in $static_dns_suffix; do
+        echo "Domains=$suffix" >> "$network_config_dir/20-wired.network"
+      done
+    fi
+    
+    log "INFO" "Created static network configuration: $static_ip/$cidr_mask"
+    [[ -n "$static_domain_search" ]] && log "INFO" "Added domain search: $static_domain_search"
+    [[ -n "$static_dns_suffix" ]] && log "INFO" "Added DNS suffix: $static_dns_suffix"
+  fi
+  
+  # Enable systemd-networkd
+  execute_cmd "chroot $install_root systemctl enable systemd-networkd" "Enabling systemd-networkd"
+  execute_cmd "chroot $install_root systemctl enable systemd-resolved" "Enabling systemd-resolved"
+}
+
+# Configure manual network (leave for user to configure post-installation)
+configure_manual_network() {
+  log "INFO" "Manual network configuration selected - skipping automatic setup"
+  
+  # Create a placeholder file to indicate manual configuration was chosen
+  if [[ $dry_run == "true" ]]; then
+    echo "[DRY-RUN] Would create manual network indicator file"
+  else
+    cat > "$install_root/etc/kde-neon-manual-network" << 'EOF'
+# Manual network configuration was selected during installation
+# Please configure your network settings manually after first boot
+# Common options:
+#   - Use NetworkManager GUI (System Settings > Network)
+#   - Configure systemd-networkd (/etc/systemd/network/)
+#   - Use traditional networking (/etc/network/interfaces)
+EOF
+    log "INFO" "Created manual network configuration indicator"
+  fi
+}
+
 # Interactive drive selection with Windows detection and safety checks
 select_target_drive() {
   log "INFO" "Enumerating NVMe drives..."
@@ -794,8 +943,43 @@ prompt_for_settings() {
   root_fs="${input:-ext4}"
   
   # Network config
-  read -r -p "Network configuration [dhcp]: " input
-  network_config="${input:-dhcp}"
+  echo "Available network configurations:"
+  echo "  dhcp    - Automatic IP configuration (recommended)"
+  echo "  static  - Manual IP configuration"
+  echo "  manual  - Manual network setup after installation"
+  
+  while true; do
+    read -r -p "Network configuration [dhcp]: " input
+    network_config="${input:-dhcp}"
+    
+    case "$network_config" in
+      dhcp|static|manual)
+        break
+        ;;
+      *)
+        echo -e "${RED}Invalid option: $network_config${NC}"
+        echo "Please choose: dhcp, static, or manual"
+        ;;
+    esac
+  done
+  
+  # Collect additional settings for static configuration
+  if [[ "$network_config" == "static" ]]; then
+    echo "Static IP configuration:"
+    read -r -p "IP address (e.g., 192.168.1.100): " static_ip
+    read -r -p "Subnet mask (e.g., 255.255.255.0): " static_netmask
+    read -r -p "Gateway (e.g., 192.168.1.1): " static_gateway
+    read -r -p "DNS servers (e.g., 8.8.8.8,8.8.4.4): " static_dns
+    read -r -p "Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
+    read -r -p "DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
+    
+    # Basic validation
+    if [[ -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
+      echo -e "${RED}Error: IP address, netmask, and gateway are required for static configuration${NC}"
+      echo "Falling back to DHCP configuration"
+      network_config="dhcp"
+    fi
+  fi
   
   echo
   echo -e "${GREEN}Configuration complete${NC}"
@@ -828,6 +1012,12 @@ root_fs="${root_fs:-ext4}"
 
 # Network settings
 network_config="${network_config:-dhcp}"
+static_ip="${static_ip:-}"
+static_netmask="${static_netmask:-}"
+static_gateway="${static_gateway:-}"
+static_dns="${static_dns:-}"
+static_domain_search="${static_domain_search:-}"
+static_dns_suffix="${static_dns_suffix:-}"
 EOF
 
   if [[ $dry_run == "false"   ]]; then
@@ -1074,6 +1264,9 @@ phase5_system_configuration() {
   # Set hostname
   local system_hostname="${hostname:-kde-neon}"
   execute_cmd "echo $system_hostname > $install_root/etc/hostname" "Setting hostname"
+
+  # Configure network settings
+  configure_network_settings
 
   # Remove live system packages
   execute_cmd "chroot $install_root apt-get -qq -y purge calamares neon-live casper '^live-*' >/dev/null 2>&1" "Purging live system packages"
