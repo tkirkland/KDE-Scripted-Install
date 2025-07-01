@@ -500,9 +500,8 @@ configure_static_network() {
   log "INFO" "Setting up static network configuration"
   
   if [[ -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
-    log "WARN" "Missing static network parameters, falling back to DHCP"
-    configure_dhcp_network
-    return
+    log "ERROR" "Missing static network parameters - this should not happen after validation"
+    return 1
   fi
   
   # Convert netmask to CIDR if needed
@@ -965,20 +964,24 @@ prompt_for_settings() {
   
   # Collect additional settings for static configuration
   if [[ "$network_config" == "static" ]]; then
-    echo "Static IP configuration:"
-    read -r -p "IP address (e.g., 192.168.1.100): " static_ip
-    read -r -p "Subnet mask (e.g., 255.255.255.0): " static_netmask
-    read -r -p "Gateway (e.g., 192.168.1.1): " static_gateway
-    read -r -p "DNS servers (e.g., 8.8.8.8,8.8.4.4): " static_dns
-    read -r -p "Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
-    read -r -p "DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
-    
-    # Basic validation
-    if [[ -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
-      echo -e "${RED}Error: IP address, netmask, and gateway are required for static configuration${NC}"
-      echo "Falling back to DHCP configuration"
-      network_config="dhcp"
-    fi
+    while true; do
+      echo "Static IP configuration:"
+      read -r -p "IP address (e.g., 192.168.1.100): " static_ip
+      read -r -p "Subnet mask (e.g., 255.255.255.0): " static_netmask
+      read -r -p "Gateway (e.g., 192.168.1.1): " static_gateway
+      read -r -p "DNS servers (e.g., 8.8.8.8,8.8.4.4): " static_dns
+      read -r -p "Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
+      read -r -p "DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
+      
+      # Basic validation
+      if [[ -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
+        echo -e "${RED}Error: IP address, netmask, and gateway are required for static configuration${NC}"
+        echo "Please provide all required fields."
+        echo ""
+      else
+        break
+      fi
+    done
   fi
   
   echo
