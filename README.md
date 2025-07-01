@@ -1,17 +1,12 @@
-# KDE Neon Log Parser & Installer
+# KDE Neon Automated Installer
 
-A comprehensive toolkit for analyzing KDE Calamares installation logs and creating automated command-line installers for KDE Neon systems.
+A comprehensive command-line installer for KDE Neon systems with extensive hardware detection, dual-boot safety, and configuration management.
 
 ## Overview
 
-This project extracts and analyzes commands from KDE Calamares installation logs to create reproducible, automated installation scripts. It transforms logged installation processes into standalone command-line installers with enhanced features like drive enumeration, dual-boot safety, and configuration persistence.
+This project provides a robust, automated installation system for KDE Neon with advanced features including NVMe drive detection, Windows dual-boot protection, comprehensive logging, and persistent configuration management. The installer follows a structured 5-phase approach ensuring reliable and safe system deployment.
 
 ## Features
-
-### Log Analysis
-- **Pattern Recognition**: Extracts QList commands and shell executions from Calamares logs
-- **Command Validation**: Validates and filters extracted commands for reproducibility  
-- **Execution Reproduction**: Generates executable scripts that mirror original installations
 
 ### Automated Installation
 - **Drive Enumeration**: Dynamic NVMe drive detection and selection
@@ -36,9 +31,6 @@ This project extracts and analyzes commands from KDE Calamares installation logs
 ### Basic Usage
 
 ```bash
-# Parse installation log and generate command script
-./parse_kde_install.sh session.log extracted_commands.sh
-
 # Run with dry-run mode (recommended first run)
 sudo ./kde_neon_installer.sh --dry-run
 
@@ -52,13 +44,13 @@ sudo ./kde_neon_installer.sh --config /path/to/install.conf
 ## Project Structure
 
 ```
-logparser/
+kde_script_install/
 ├── README.md                 # This file
 ├── CLAUDE.md                 # Project documentation and requirements
-├── parse_kde_install.sh      # Log parser script
-├── extracted_commands.sh     # Generated command extraction
-├── kde_commands.sh          # Processed commands for installer
-├── session.log             # Sample KDE installation log (gitignored)
+├── kde_neon_installer.sh     # Main installer script
+├── install.conf             # Configuration file
+├── logs/                    # Installation logs directory
+│   └── kde-install-*.log    # Timestamped installation logs
 └── .gitignore              # Git ignore rules
 ```
 
@@ -66,25 +58,26 @@ logparser/
 
 ### Core Scripts
 
-#### `parse_kde_install.sh`
-Main parser that extracts commands from Calamares installation logs.
+#### `kde_neon_installer.sh`
+Main installer script that provides automated KDE Neon installation with comprehensive safety checks.
 
 **Usage:**
 ```bash
-./parse_kde_install.sh [input_log] [output_script]
+sudo ./kde_neon_installer.sh [options]
 ```
 
 **Features:**
-- Extracts QList command patterns
-- Validates command structure
-- Generates executable reproduction scripts
-- Handles filesystem operations and package management
+- NVMe drive detection and enumeration
+- Windows dual-boot protection
+- Structured 5-phase installation process
+- Comprehensive error handling and logging
+- Configuration persistence and management
 
-#### `extracted_commands.sh` (Generated)
-Raw extracted commands from the installation log, organized by execution context.
+#### `install.conf`
+Configuration file storing installation preferences and settings.
 
-#### `kde_commands.sh` (Generated)  
-Processed and validated commands ready for installer integration.
+#### `logs/`
+Directory containing timestamped installation logs for debugging and analysis.
 
 ### Installation Phases
 
@@ -186,13 +179,14 @@ Options:
 
 ### Testing
 ```bash
-# Test log parsing
-./parse_kde_install.sh test_session.log test_output.sh
-
-# Validate generated commands
-bash -n extracted_commands.sh
-
 # Test installer in dry-run mode
+sudo ./kde_neon_installer.sh --dry-run
+
+# Test with custom configuration
+sudo ./kde_neon_installer.sh --config test_install.conf --dry-run
+
+# Test with verbose logging
+export DEBUG=1
 sudo ./kde_neon_installer.sh --dry-run
 ```
 
@@ -218,10 +212,10 @@ See [CLAUDE.md](CLAUDE.md) for detailed implementation tasks and future developm
 
 ### Common Issues
 
-**Parser fails with "command not found"**
-- Ensure log file exists and is readable
-- Check log format matches Calamares output
-- Verify bash version compatibility
+**Installer fails with "command not found"**
+- Ensure kde_neon_installer.sh has execute permissions
+- Verify running from correct directory
+- Check bash version compatibility
 
 **Installer fails drive detection**
 - Confirm NVMe drives are present
@@ -242,8 +236,10 @@ sudo ./kde_neon_installer.sh --dry-run
 
 ### Log Analysis
 Installation logs are saved to:
-- Default: `./kde-install-YYYYMMDD-HHMMSS.log`
+- Default: `./logs/kde-install-YYYYMMDD-HHMMSS.log`
 - Custom: Specified via `--log-path` option
+- Logs contain detailed phase-by-phase installation progress
+- Each log includes hardware detection, drive enumeration, and command execution details
 
 ## License
 
