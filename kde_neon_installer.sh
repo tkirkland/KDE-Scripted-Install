@@ -1674,7 +1674,7 @@ main() {
     
     # Check if anything is mounted in the installation root
     if mount | grep -q "$install_root"; then
-      echo "Previous mounts detected - unmounting to avoid conflicts"
+      echo "Previous active mounts needed by script are being unmounted..."
       if [[ $dry_run == "false" ]]; then
         # Unmount all filesystems in install_root (reverse order for nested mounts)
         mount | grep "$install_root" | awk '{print $3}' | sort -r | while read -r mountpoint; do
