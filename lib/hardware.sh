@@ -8,7 +8,12 @@
 # Load dependencies
 #######################################
 if [[ -z "${SCRIPT_DIR:-}" ]]; then
-  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Determine script directory safely
+  if ! SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; then
+    echo "Error: Cannot determine script directory" >&2
+    return 1
+  fi
+  readonly SCRIPT_DIR
 fi
 # Source modules only if not already loaded
 if [[ -z "${CORE_VERSION:-}" ]]; then
@@ -89,7 +94,7 @@ get_drive_info() {
   # Get drive model if available
   local model=""
   if [[ -f "/sys/block/$drive_name/device/model" ]]; then
-    model=$(cat "/sys/block/$drive_name/device/model" 2>/dev/null | tr -d '\0' | xargs)
+    model=$(tr -d '\0' < "/sys/block/$drive_name/device/model" 2>/dev/null | xargs)
   fi
   
   # Format the output
@@ -268,7 +273,16 @@ select_target_drive() {
   fi
 
   # Final confirmation for Windows drives
-  if [[ " ${windows_drives[*]} " =~ " ${target_drive} " ]]; then
+  # Check if target drive is in Windows drives array
+  local drive_found=false
+  for drive in "${windows_drives[@]}"; do
+    if [[ "$drive" == "$target_drive" ]]; then
+      drive_found=true
+      break
+    fi
+  done
+  
+  if [[ "$drive_found" == "true" ]]; then
     echo
     ui_status "warn" "WARNING: Selected drive contains Windows installation"
     ui_status "warn" "This will PERMANENTLY destroy the Windows installation"

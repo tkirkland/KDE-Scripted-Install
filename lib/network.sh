@@ -8,7 +8,12 @@
 # Load dependencies
 #######################################
 if [[ -z "${SCRIPT_DIR:-}" ]]; then
-  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Determine script directory safely
+  if ! SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; then
+    echo "Error: Cannot determine script directory" >&2
+    return 1
+  fi
+  readonly SCRIPT_DIR
 fi
 # Source modules only if not already loaded
 if [[ -z "${CORE_VERSION:-}" ]]; then

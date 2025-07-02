@@ -8,7 +8,12 @@
 # Load dependencies
 #######################################
 if [[ -z "${SCRIPT_DIR:-}" ]]; then
-  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Determine script directory safely
+  if ! SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; then
+    echo "Error: Cannot determine script directory" >&2
+    return 1
+  fi
+  readonly SCRIPT_DIR
 fi
 # Source core.sh and ui.sh only if not already loaded
 if [[ -z "${CORE_VERSION:-}" ]]; then
@@ -21,6 +26,7 @@ fi
 #######################################
 # Validation module constants
 #######################################
+# Module version for dependency tracking
 readonly VALIDATION_VERSION="1.0"
 
 #######################################
@@ -234,9 +240,8 @@ detect_windows() {
 # duplicate or orphaned entries from previous installations.
 # Globals:
 #   dry_run - Flag to control actual vs simulated operations
-#   target_drive - Drive being used for current installation
 # Arguments:
-#   None
+#   $1: target_drive - Drive being used for current installation
 # Outputs:
 #   Professional UI for boot entry management decisions
 #   Lists existing KDE entries with drive information
@@ -244,6 +249,7 @@ detect_windows() {
 #   Always returns 0 (handles errors internally)
 #######################################
 check_existing_kde_entries() {
+  local target_drive="$1"
   local kde_entries
   kde_entries=$(efibootmgr | grep -i "KDE" || true)
   

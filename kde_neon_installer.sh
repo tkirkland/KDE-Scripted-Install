@@ -13,7 +13,12 @@ readonly VERSION="2.0"
 #######################################
 # Load core utilities module
 #######################################
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Determine script directory safely
+if ! SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; then
+  echo "Error: Cannot determine script directory" >&2
+  exit 1
+fi
+readonly SCRIPT_DIR
 readonly LIB_DIR="${SCRIPT_DIR}/lib"
 source "${LIB_DIR}/core.sh"
 source "${LIB_DIR}/ui.sh"
@@ -68,6 +73,7 @@ parse_arguments() {
         ;;
       --debug)
         debug=true
+        export DEBUG=true
         shift
         ;;
       --show-win)
@@ -1425,8 +1431,8 @@ phase4_bootloader_configuration() {
 
   # Capture existing boot entries before GRUB installation
   # This allows us to exclude our newly created entry from a cleanup menu
-  local pre_grub_entries
-  pre_grub_entries=$(efibootmgr -v 2>/dev/null || true)
+  # Note: Boot entries captured for potential future cleanup functionality
+  # pre_grub_entries=$(efibootmgr -v 2>/dev/null || true)
 
   # Install GRUB
   execute_cmd "chroot $install_root grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id='KDE Neon' $drive" "Installing GRUB bootloader"
@@ -1610,12 +1616,12 @@ main_installation() {
 main() {
   # Initialize constants
   local script_dir
-  local default_install_root
+  # default_install_root removed - not used
   local mountpoint
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   readonly script_dir
   readonly default_config_file="${script_dir}/install.conf"
-  readonly default_install_root="/target"
+  # readonly default_install_root="/target"
 
   # Initialize remaining variables
   log_file=""
