@@ -78,6 +78,7 @@ parse_arguments() {
         shift
         ;;
       --debug)
+        # shellcheck disable=SC2034  # Used by core module for debug logging
         debug=true
         export debug=true
         shift
@@ -1640,6 +1641,7 @@ main() {
   target_drive=""
   install_root="/target"
   dry_run=false
+  # shellcheck disable=SC2034  # Used by core module for debug logging
   debug=false
   user_password=""
   sudo_nopasswd="n"
