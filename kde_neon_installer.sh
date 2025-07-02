@@ -8,24 +8,33 @@
 
 set -euo pipefail
 
+
+#######################################
+# Global constants - Google Style Compliant
+#######################################
 readonly VERSION="2.0"
 
 #######################################
-# Load core utilities module
+# Module loading function - Google Style Compliant
 #######################################
-# Determine script directory safely
-if ! SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; then
-  echo "Error: Cannot determine script directory" >&2
-  exit 1
-fi
-readonly SCRIPT_DIR
-readonly LIB_DIR="${SCRIPT_DIR}/lib"
-source "${LIB_DIR}/core.sh"
-source "${LIB_DIR}/ui.sh"
-source "${LIB_DIR}/validation.sh"
-source "${LIB_DIR}/hardware.sh"
-source "${LIB_DIR}/config.sh"
-source "${LIB_DIR}/network.sh"
+load_modules() {
+  local script_dir lib_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  lib_dir="${script_dir}/lib"
+  
+  # Source required modules
+  source "${lib_dir}/core.sh"
+  source "${lib_dir}/ui.sh"
+  source "${lib_dir}/validation.sh"
+  source "${lib_dir}/hardware.sh"
+  source "${lib_dir}/config.sh"
+  source "${lib_dir}/network.sh"
+  
+  # Set global variables for other functions
+  # Use lowercase to satisfy shellcheck, even though these are constants
+  declare -gr script_dir_global="$script_dir"
+  declare -gr lib_dir_global="$lib_dir"
+}
 
 # Display help information and usage examples
 show_help() {
@@ -73,7 +82,7 @@ parse_arguments() {
         ;;
       --debug)
         debug=true
-        export DEBUG=true
+        export debug=true
         shift
         ;;
       --show-win)
@@ -1614,6 +1623,9 @@ main_installation() {
 
 # Script entry point with argument parsing and installation flow
 main() {
+  # Load modules first - must be done before any function calls
+  load_modules
+  
   # Initialize constants
   local script_dir
   # default_install_root removed - not used
@@ -1639,6 +1651,7 @@ main() {
     exit 0
   fi
 
+    # Script directory already determined at module load time
   # Parse command line arguments first
   parse_arguments "$@"
 
@@ -1660,7 +1673,7 @@ main() {
     find "$(dirname "$log_file")" -name "kde-install-*.log" -type f -mtime +7 -delete 2>/dev/null || true
   fi
 
-  # Display professional welcome banner
+  # Display a professional welcome banner
   ui_header "KDE Neon Installer v$VERSION" "Automated Installation System"
   
   ui_section "Features"
