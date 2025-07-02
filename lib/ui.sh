@@ -8,7 +8,8 @@
 # Load dependencies
 #######################################
 if [[ -z "${SCRIPT_DIR:-}" ]]; then
-  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  readonly SCRIPT_DIR
 fi
 # Source core.sh only if not already loaded
 if [[ -z "${CORE_VERSION:-}" ]]; then
@@ -18,6 +19,8 @@ fi
 #######################################
 # UI module constants
 #######################################
+# Module version for dependency tracking
+# shellcheck disable=SC2034  # Used for version checking
 readonly UI_VERSION="1.0"
 readonly UI_WIDTH=65
 
@@ -187,7 +190,6 @@ ui_input() {
   local input_type="${3:-text}"
   local options="${4:-}"
   local user_input=""
-  local validation_result=""
   
   while true; do
     case "$input_type" in

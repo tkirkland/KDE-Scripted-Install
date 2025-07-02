@@ -26,6 +26,8 @@ fi
 #######################################
 # Configuration module constants
 #######################################
+# Module version for dependency tracking
+# shellcheck disable=SC2034  # Used for version checking
 readonly CONFIG_VERSION="1.0"
 
 #######################################

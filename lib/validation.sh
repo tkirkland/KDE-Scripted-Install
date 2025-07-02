@@ -27,6 +27,7 @@ fi
 # Validation module constants
 #######################################
 # Module version for dependency tracking
+# shellcheck disable=SC2034  # Used for version checking
 readonly VALIDATION_VERSION="1.0"
 
 #######################################

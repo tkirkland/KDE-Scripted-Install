@@ -29,6 +29,8 @@ fi
 #######################################
 # Hardware module constants
 #######################################
+# Module version for dependency tracking
+# shellcheck disable=SC2034  # Used for version checking
 readonly HARDWARE_VERSION="1.0"
 
 #######################################

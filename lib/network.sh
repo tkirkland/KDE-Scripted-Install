@@ -24,20 +24,35 @@ if [[ -z "${UI_VERSION:-}" ]]; then
 fi
 
 #######################################
-# Network module constants
+# Network module constants and globals
 #######################################
+# Module version for dependency tracking
+# shellcheck disable=SC2034  # Used for version checking
 readonly NETWORK_VERSION="1.0"
+
+# Global variables used by network functions
+# These are set by the main installer before calling network functions
+# shellcheck disable=SC2034  # Variables set externally
+install_root=""
+static_iface=""
+static_ip=""
+static_netmask=""
+static_gateway=""
+static_dns=""
+static_domain_search=""
+static_dns_suffix=""
+network_config=""
 
 #######################################
 # Configure DHCP network with systemd-networkd.
 # Sets up automatic IP configuration with optional DNS customization.
 # Provides professional interface with clear status feedback.
 # Globals:
-#   install_root - Target installation directory
-#   static_dns_suffix - Optional DNS suffix
-#   static_domain_search - Optional domain search list
-# Arguments:
 #   None
+# Arguments:
+#   $1: install_root - Target installation directory
+#   $2: static_dns_suffix - Optional DNS suffix (can be empty)
+#   $3: static_domain_search - Optional domain search list (can be empty)
 # Outputs:
 #   Professional status messages during configuration
 # Returns:
@@ -94,16 +109,16 @@ EOF" "Creating DHCP network configuration"
 # Sets up manual IP configuration with comprehensive validation.
 # Provides professional interface with detailed status reporting.
 # Globals:
-#   install_root - Target installation directory
-#   static_iface - Network interface name
-#   static_ip - Static IP address
-#   static_netmask - Subnet mask
-#   static_gateway - Gateway IP address
-#   static_dns - DNS servers
-#   static_domain_search - Domain search list
-#   static_dns_suffix - DNS suffix
-# Arguments:
 #   None
+# Arguments:
+#   $1: install_root - Target installation directory
+#   $2: static_iface - Network interface name
+#   $3: static_ip - Static IP address
+#   $4: static_netmask - Subnet mask
+#   $5: static_gateway - Gateway IP address
+#   $6: static_dns - DNS servers
+#   $7: static_domain_search - Domain search list (can be empty)
+#   $8: static_dns_suffix - DNS suffix (can be empty)
 # Outputs:
 #   Professional status messages and configuration summary
 # Returns:
@@ -197,9 +212,9 @@ EOF" "Creating static network configuration"
 # Provides user with guidance for post-installation network setup.
 # Creates placeholder configuration with helpful documentation.
 # Globals:
-#   install_root - Target installation directory
-# Arguments:
 #   None
+# Arguments:
+#   $1: install_root - Target installation directory
 # Outputs:
 #   Professional status messages and setup instructions
 # Returns:
@@ -267,9 +282,11 @@ EOF" "Creating network setup instructions"
 # Routes to appropriate configuration method based on user choice.
 # Provides consistent interface and error handling across all methods.
 # Globals:
-#   network_config - User's network configuration choice
-# Arguments:
 #   None
+# Arguments:
+#   $1: network_config - User's network configuration choice
+#   $2: install_root - Target installation directory
+#   $3-N: Additional configuration parameters based on network type
 # Outputs:
 #   Professional status messages and configuration results
 # Returns:
