@@ -1256,32 +1256,7 @@ save_configuration() {
   cat > "$config_file" << EOF
 # KDE Neon Installation Configuration
 # Generated: $(date)
-orig:
-IFS=$'\n' addon_scripts=($(sort -V <<< "${addon_scripts[*]}"))
 
-claude sonnet:
-mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
-
-claude opus:
-mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
-
-chat gpt:
-mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
-
-deepseek 70b:
-IFS=$'\n' mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
-
-devstral:
-mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
-
-qwen32b:
-mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
-
-o4 mini:
-mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
-
-deepsook coder:
-mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
 # System settings
 locale="${locale:-en_US.UTF-8}"
 timezone="${timezone:-$(detect_timezone)}"
@@ -1326,6 +1301,7 @@ execute_addon_scripts() {
   fi
   
   # Find all .sh files in the addons directory
+  local script
   while IFS= read -r -d '' script; do
     addon_scripts+=("$script")
     ((script_count++))
@@ -1657,6 +1633,7 @@ phase5_system_configuration() {
       # Prompt for password if not set
       log "INFO" "Prompting for user password during installation"
       while true; do
+        local user_password_confirm
         read -r -s -p "  Password for $system_username: " user_password
         echo
         read -r -s -p "  Confirm password: " user_password_confirm
@@ -1756,16 +1733,15 @@ main() {
   readonly default_config_file="${script_dir}/install.conf"
   readonly default_install_root="/target"
 
-  # Initialize global variables
-  install_root="$default_install_root"
-  dry_run=false
+  # Initialize remaining variables
   log_file=""
   custom_config=""
   force_mode=false
-  debug=false
   show_win=false
   target_drive=""
-  # Initialize password and sudo variables as global
+  install_root="/target"
+  dry_run=false
+  debug=false
   user_password=""
   sudo_nopasswd="n"
 
