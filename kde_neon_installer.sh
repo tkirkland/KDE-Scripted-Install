@@ -1534,6 +1534,11 @@ phase5_system_configuration() {
   echo
   dry_echo "=== Phase 5: Configuring system settings and cleanup ==="
 
+  # Configure timezone
+  local system_timezone="${timezone:-UTC}"
+  execute_cmd "chroot $install_root ln -sf /usr/share/zoneinfo/$system_timezone /etc/localtime" "Setting timezone to $system_timezone"
+  execute_cmd "echo '$system_timezone' > $install_root/etc/timezone" "Writing timezone configuration"
+  
   # Set timezone to local time
   execute_cmd "chroot $install_root timedatectl set-local-rtc 1" "Setting system clock to local time"
 
