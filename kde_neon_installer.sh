@@ -331,13 +331,18 @@ detect_windows() {
 # Check existing KDE entries and prompt user about non-target-drive entries
 check_existing_kde_entries() {
   local target_drive="$1"
+  local pre_grub_entries="$2"
   local target_efi_partition="${target_drive}p1"
   
   log "INFO" "Checking for existing KDE boot entries..."
   
-  # Get all KDE-related boot entries with full details
+  # Use pre-GRUB entries to exclude our newly created entry
   local kde_entries_info
-  kde_entries_info=$(efibootmgr -v | grep -E "(KDE|neon)" || true)
+  if [[ -n "$pre_grub_entries" ]]; then
+    kde_entries_info=$(echo "$pre_grub_entries" | grep -E "(KDE|neon)" || true)
+  else
+    kde_entries_info=$(efibootmgr -v | grep -E "(KDE|neon)" || true)
+  fi
   
   if [[ -z "$kde_entries_info" ]]; then
     log "INFO" "No existing KDE boot entries found"
@@ -1456,6 +1461,11 @@ phase4_bootloader_configuration() {
   execute_cmd "chmod 1777 $install_root/tmp" "Setting proper permissions on /tmp"
   execute_cmd "mount --bind /sys/firmware/efi/efivars $install_root/sys/firmware/efi/efivars" "Binding EFI variables"
 
+  # Capture existing boot entries before GRUB installation
+  # This allows us to exclude our newly created entry from cleanup menu
+  local pre_grub_entries
+  pre_grub_entries=$(efibootmgr -v 2>/dev/null || true)
+  
   # Install GRUB
   execute_cmd "chroot $install_root grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id='KDE Neon' $drive" "Installing GRUB bootloader"
 
@@ -1478,7 +1488,7 @@ phase4_bootloader_configuration() {
   fi
   
   # Check for existing KDE entries that don't reference our target drive
-  check_existing_kde_entries "$target_drive"
+  check_existing_kde_entries "$target_drive" "$pre_grub_entries"
 
   # Update fstab
   if [[ $dry_run == "true"   ]]; then
