@@ -10,79 +10,13 @@ set -euo pipefail
 
 readonly VERSION="2.0"
 
-# Color codes for output
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m' # No Color
-
-# Display a message in both dry-run and live modes
-dry_echo() {
-  local message="$*"
-  echo "$message"
-  if [[ $dry_run == "false"   ]]; then
-    log "INFO" "$message"
-  fi
-}
-
-# Log messages with timestamp and color coding
-log() {
-  local level="$1"
-  shift
-  local message="$*"
-  local timestamp
-  timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-
-  # Write a timestamped entry to log a file only
-  echo "[$timestamp] [$level] $message" >> "$log_file"
-
-  # Display only ERROR and WARN messages to screen
-  case "$level" in
-    "ERROR")
-      echo -e "${RED}ERROR: $message${NC}" >&2
-      ;;
-    "WARN")
-      echo -e "${YELLOW}WARNING: $message${NC}" >&2
-      ;;
-    "DEBUG")
-      if [[ $debug == "true" ]]; then
-        echo -e "${BLUE}DEBUG: $message${NC}"
-      fi
-      ;;
-  esac
-}
-
-# Exit with an error message and status code 1
-error_exit() {
-  log "ERROR" "$1"
-  exit 1
-}
-
-# Execute command with logging and dry-run support
-execute_cmd() {
-  local cmd="$1"
-  local description="${2:-}"
-
-  if [[ $dry_run == "true"   ]]; then
-    if [[ -n $description   ]]; then
-      echo "[DRY-RUN] $description"
-    fi
-    echo "[DRY-RUN] Would execute: $cmd"
-    return 0
-  fi
-
-  if [[ -n $description ]]; then
-    echo "  $description..."
-  fi
-
-  log "DEBUG" "Executing: $cmd"
-
-  if ! bash -c "$cmd" >> "$log_file" 2>&1; then
-    log "ERROR" "Failed: $description"
-    error_exit "Command failed: $cmd"
-  fi
-}
+#######################################
+# Load core utilities module
+#######################################
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LIB_DIR="${SCRIPT_DIR}/lib"
+source "${LIB_DIR}/core.sh"
+source "${LIB_DIR}/ui.sh"
 
 # Display help information and usage examples
 show_help() {
@@ -1098,84 +1032,59 @@ calculate_optimal_swap() {
 
 # Interactive prompts for configuration settings
 prompt_for_settings() {
-  echo
-  echo -e "${YELLOW}Configuration Setup:${NC}"
+  ui_section "Configuration Setup"
 
   # Auto-detect system settings for defaults
   local detected_locale detected_timezone
   detected_locale=$(detect_locale)
   detected_timezone=$(detect_timezone)
 
+  # Show current detected values
+  ui_field "Detected Locale" "$detected_locale"
+  ui_field "Detected Timezone" "$detected_timezone"
+  echo
+
   # Prompt for all settings with loaded config or auto-detected defaults
-  local input
   local default_locale="${locale:-$detected_locale}"
   local default_timezone="${timezone:-$detected_timezone}"
   local default_keyboard="${keyboard_layout:-us}"
   local default_fullname="${user_fullname:-KDE User}"
   local default_username="${username:-user}"
 
-  # Locale (use loaded config or auto-detected default)
-  read -r -p "Locale [$default_locale]: " input
-  locale="${input:-$default_locale}"
+  # System Settings
+  ui_section "System Settings"
+  locale=$(ui_input "Locale" "$default_locale")
+  timezone=$(ui_input "Timezone" "$default_timezone")
+  keyboard_layout=$(ui_input "Keyboard layout" "$default_keyboard")
 
-  # Timezone (use loaded config or auto-detected default)
-  read -r -p "Timezone [$default_timezone]: " input
-  timezone="${input:-$default_timezone}"
+  # User Account
+  ui_section "User Account"
+  user_fullname=$(ui_input "Full name" "$default_fullname")
+  username=$(ui_input "Username" "$default_username")
+  sudo_nopasswd=$(ui_input "Add to passwordless sudo?" "n" "confirm")
 
-  # Keyboard layout
-  read -r -p "Keyboard layout [$default_keyboard]: " input
-  keyboard_layout="${input:-$default_keyboard}"
-
-  # User full name
-  read -r -p "User full name [$default_fullname]: " input
-  user_fullname="${input:-$default_fullname}"
-
-  # Username
-  read -r -p "Username [$default_username]: " input
-  username="${input:-$default_username}"
-
-  # No password sudo option
-  read -r -n 1 -p "  Add to passwordless sudo? (y/n): " sudo_nopasswd
-  echo  # Move to next line after single character input
-
-  # Hostname
+  # System Configuration
+  ui_section "System Configuration"
   local default_hostname="${hostname:-kde-neon}"
-  read -r -p "Hostname [$default_hostname]: " input
-  hostname="${input:-$default_hostname}"
-
-  # Swap size with RAM-based optimal default
+  hostname=$(ui_input "Hostname" "$default_hostname")
+  
   local optimal_swap
   optimal_swap=$(calculate_optimal_swap)
   local default_swap="${swap_size:-$optimal_swap}"
-  read -r -p "Swap file size [$default_swap]: " input
-  swap_size="${input:-$default_swap}"
-
-  # Root filesystem
+  swap_size=$(ui_input "Swap file size" "$default_swap")
+  
   local default_fs="${root_fs:-ext4}"
-  read -r -p "Root filesystem [$default_fs]: " input
-  root_fs="${input:-$default_fs}"
+  root_fs=$(ui_input "Root filesystem" "$default_fs")
 
-  # Network config
-  echo "Available network configurations:"
-  echo "  dhcp    - Automatic IP configuration (recommended)"
-  echo "  static  - Manual IP configuration"
-  echo "  manual  - Manual network setup after installation"
-
-  while true; do
-    local default_network="${network_config:-dhcp}"
-    read -r -p "Network configuration [$default_network]: " input
-    network_config="${input:-$default_network}"
-
-    case "$network_config" in
-      dhcp|static|manual)
-        break
-        ;;
-      *)
-        echo -e "${RED}Invalid option: $network_config${NC}"
-        echo "Please choose: dhcp, static, or manual"
-        ;;
-    esac
-  done
+  # Network Configuration
+  ui_section "Network Configuration"
+  ui_status "info" "dhcp - Automatic IP configuration (recommended)"
+  ui_status "info" "static - Manual IP configuration"
+  ui_status "info" "manual - Manual network setup after installation"
+  echo
+  
+  local default_network="${network_config:-dhcp}"
+  network_config=$(ui_input "Network configuration" "$default_network" "choice" "dhcp,static,manual")
 
   # Collect additional settings for static configuration
   if [[ "$network_config" == "static" ]]; then
@@ -1183,8 +1092,9 @@ prompt_for_settings() {
     local current_iface
     current_iface=$(ip route | grep default | head -n1 | awk '{print $5}' 2>/dev/null || echo "")
 
+    ui_section "Static IP Configuration"
+    
     while true; do
-      echo "Static IP configuration:"
       local default_iface="${static_iface:-$current_iface}"
       local default_ip="${static_ip:-192.168.1.100}"
       local default_netmask="${static_netmask:-255.255.255.0}"
@@ -1192,25 +1102,20 @@ prompt_for_settings() {
       local default_dns="${static_dns:-8.8.8.8,8.8.4.4}"
 
       if [[ -n "$default_iface" ]]; then
-        read -r -p "Network interface [$default_iface]: " input
-        static_iface="${input:-$default_iface}"
+        static_iface=$(ui_input "Network interface" "$default_iface")
       else
-        read -r -p "Network interface (e.g., enp0s3, eth0): " static_iface
+        static_iface=$(ui_input "Network interface (e.g., enp0s3, eth0)" "")
       fi
-      read -r -p "IP address [$default_ip]: " input
-      static_ip="${input:-$default_ip}"
-      read -r -p "Subnet mask [$default_netmask]: " input
-      static_netmask="${input:-$default_netmask}"
-      read -r -p "Gateway [$default_gateway]: " input
-      static_gateway="${input:-$default_gateway}"
-      read -r -p "DNS servers [$default_dns]: " input
-      static_dns="${input:-$default_dns}"
+      static_ip=$(ui_input "IP address" "$default_ip")
+      static_netmask=$(ui_input "Subnet mask" "$default_netmask")
+      static_gateway=$(ui_input "Gateway" "$default_gateway")
+      static_dns=$(ui_input "DNS servers" "$default_dns")
 
       # Basic validation
       if [[ -z "$static_iface" || -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
-        echo -e "${RED}Error: Interface name, IP address, netmask, and gateway are required for static configuration${NC}"
-        echo "Please provide all required fields."
-        echo ""
+        ui_status "error" "Interface, IP address, netmask, and gateway are required"
+        ui_status "info" "Please provide all required fields"
+        echo
       else
         break
       fi
@@ -1219,29 +1124,27 @@ prompt_for_settings() {
 
   # Collect DNS settings for both DHCP and static (but not manual)
   if [[ "$network_config" != "manual" ]]; then
-    echo "  DNS configuration:"
+    ui_section "DNS Configuration"
     local default_dns_suffix="${static_dns_suffix:-}"
 
     if [[ -n "$default_dns_suffix" ]]; then
-      read -r -p "  DNS suffix [$default_dns_suffix]: " input
-      static_dns_suffix="${input:-$default_dns_suffix}"
+      static_dns_suffix=$(ui_input "DNS suffix" "$default_dns_suffix")
     else
-      read -r -p "  DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
+      static_dns_suffix=$(ui_input "DNS suffix (optional, space-separated)" "")
     fi
 
     # Use suffix as fallback default for search if no saved search domain
     local default_domain_search="${static_domain_search:-$static_dns_suffix}"
 
     if [[ -n "$default_domain_search" ]]; then
-      read -r -p "  Domain search [$default_domain_search]: " input
-      static_domain_search="${input:-$default_domain_search}"
+      static_domain_search=$(ui_input "Domain search" "$default_domain_search")
     else
-      read -r -p "  Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
+      static_domain_search=$(ui_input "Domain search (optional, space-separated)" "")
     fi
   fi
 
   echo
-  echo -e "${GREEN}Configuration complete${NC}"
+  ui_status "success" "Configuration complete"
 
   # Save configuration for future runs
   save_configuration
@@ -1770,21 +1673,17 @@ main() {
     find "$(dirname "$log_file")" -name "kde-install-*.log" -type f -mtime +7 -delete 2>/dev/null || true
   fi
 
-  # Display welcome banner
-  echo "========================================================="
-  echo "              KDE Neon Installer v$VERSION"
-  echo "           Automated Installation System"
-  echo "========================================================="
+  # Display professional welcome banner
+  ui_header "KDE Neon Installer v$VERSION" "Automated Installation System"
+  
+  ui_section "Features"
+  ui_status "info" "UEFI-only systems with NVMe drives"
+  ui_status "info" "Automatic Windows detection for dual-boot safety"
+  ui_status "info" "GeoIP-based timezone and locale detection"
+  ui_status "info" "Interactive configuration management"
+  
   echo
-  echo " Features:"
-  echo "  • UEFI-only systems with NVMe drives"
-  echo "  • Automatic Windows detection for dual-boot safety"
-  echo "  • GeoIP-based timezone and locale detection"
-  echo "  • Interactive configuration management"
-  echo
-  echo "    WARNING: Target drive will be completely erased"
-  echo "========================================================="
-  echo
+  ui_status "warn" "Target drive will be completely erased"
 
   log "INFO" "KDE Neon Automated Installer started"
   log "INFO" "Log file: $log_file"
