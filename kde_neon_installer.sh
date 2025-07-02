@@ -8,19 +8,30 @@
 
 set -euo pipefail
 
+
+#######################################
+# Global constants - Google Style Compliant
+#######################################
 readonly VERSION="2.0"
 
 #######################################
-# Load core utilities module
+# Module loading function - Google Style Compliant
 #######################################
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly LIB_DIR="${SCRIPT_DIR}/lib"
-source "${LIB_DIR}/core.sh"
-source "${LIB_DIR}/ui.sh"
-source "${LIB_DIR}/validation.sh"
-source "${LIB_DIR}/hardware.sh"
-source "${LIB_DIR}/config.sh"
-source "${LIB_DIR}/network.sh"
+load_modules() {
+  local script_dir lib_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  lib_dir="${script_dir}/lib"
+  
+  # Source required modules
+  source "${lib_dir}/core.sh"
+  source "${lib_dir}/ui.sh"
+  source "${lib_dir}/validation.sh"
+  source "${lib_dir}/hardware.sh"
+  source "${lib_dir}/config.sh"
+  source "${lib_dir}/network.sh"
+  
+  # Module loading complete - no additional globals needed
+}
 
 # Display help information and usage examples
 show_help() {
@@ -67,7 +78,9 @@ parse_arguments() {
         shift
         ;;
       --debug)
+        # shellcheck disable=SC2034  # Used by core module for debug logging
         debug=true
+        export debug=true
         shift
         ;;
       --show-win)
@@ -1425,8 +1438,8 @@ phase4_bootloader_configuration() {
 
   # Capture existing boot entries before GRUB installation
   # This allows us to exclude our newly created entry from a cleanup menu
-  local pre_grub_entries
-  pre_grub_entries=$(efibootmgr -v 2>/dev/null || true)
+  # Note: Boot entries captured for potential future cleanup functionality
+  # pre_grub_entries=$(efibootmgr -v 2>/dev/null || true)
 
   # Install GRUB
   execute_cmd "chroot $install_root grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id='KDE Neon' $drive" "Installing GRUB bootloader"
@@ -1608,14 +1621,17 @@ main_installation() {
 
 # Script entry point with argument parsing and installation flow
 main() {
+  # Load modules first - must be done before any function calls
+  load_modules
+  
   # Initialize constants
   local script_dir
-  local default_install_root
+  # default_install_root removed - not used
   local mountpoint
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   readonly script_dir
   readonly default_config_file="${script_dir}/install.conf"
-  readonly default_install_root="/target"
+  # readonly default_install_root="/target"
 
   # Initialize remaining variables
   log_file=""
@@ -1625,6 +1641,7 @@ main() {
   target_drive=""
   install_root="/target"
   dry_run=false
+  # shellcheck disable=SC2034  # Used by core module for debug logging
   debug=false
   user_password=""
   sudo_nopasswd="n"
@@ -1633,6 +1650,7 @@ main() {
     exit 0
   fi
 
+    # Script directory already determined at module load time
   # Parse command line arguments first
   parse_arguments "$@"
 
@@ -1654,7 +1672,7 @@ main() {
     find "$(dirname "$log_file")" -name "kde-install-*.log" -type f -mtime +7 -delete 2>/dev/null || true
   fi
 
-  # Display professional welcome banner
+  # Display a professional welcome banner
   ui_header "KDE Neon Installer v$VERSION" "Automated Installation System"
   
   ui_section "Features"
