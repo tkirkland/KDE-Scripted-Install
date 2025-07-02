@@ -17,6 +17,10 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LIB_DIR="${SCRIPT_DIR}/lib"
 source "${LIB_DIR}/core.sh"
 source "${LIB_DIR}/ui.sh"
+source "${LIB_DIR}/validation.sh"
+source "${LIB_DIR}/hardware.sh"
+source "${LIB_DIR}/config.sh"
+source "${LIB_DIR}/network.sh"
 
 # Display help information and usage examples
 show_help() {
@@ -132,30 +136,7 @@ check_network() {
   log "INFO" "Network connectivity confirmed"
 }
 
-# Find and list available internal NVMe drives
-enumerate_nvme_drives() {
-  local drives=()
-  local drive
-
-  for drive in /dev/nvme*n*; do
-    if [[ -b $drive && $drive =~ /dev/nvme[0-9]+n[0-9]+$     ]]; then
-      # Check if it's an internal drive (not USB)
-      local drive_name
-      drive_name=$(basename "$drive")
-      local sys_path="/sys/block/$drive_name"
-
-      if [[ -e $sys_path   ]]; then
-        local removable
-        removable=$(cat "$sys_path/removable" 2> /dev/null || echo "0")
-        if [[ $removable == "0"   ]]; then
-          drives+=("$drive")
-        fi
-      fi
-    fi
-  done
-
-  printf '%s\n' "${drives[@]}"
-}
+# Hardware detection functions are now in lib/hardware.sh
 
 # Check for global Windows EFI entries (system-wide, not drive-specific)
 detect_windows_efi() {
