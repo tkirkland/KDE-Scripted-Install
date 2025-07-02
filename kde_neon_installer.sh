@@ -1561,27 +1561,32 @@ phase5_system_configuration() {
   local system_fullname="${user_fullname:-KDE User}"
   execute_cmd "chroot $install_root useradd -m -s /bin/bash -c '$system_fullname' $system_username" "Creating user account"
 
-  # FIXED: Use the global user_password variable that was set in prompt_for_settings
   if [[ -n "${user_password:-}" ]]; then
     execute_cmd "printf '%s:%s\n' '$system_username' '$user_password' | chroot $install_root chpasswd" "Setting user password"
   else
-    # Prompt for password if not set
-    log "INFO" "Prompting for user password during installation"
-    while true; do
-      read -r -s -p "  Password for $system_username: " user_password
-      echo
-      read -r -s -p "  Confirm password: " user_password_confirm
-      echo
-      if [[ "$user_password" == "$user_password_confirm" ]]; then
-        if [[ ${#user_password} -ge 6 ]]; then
-          break
+    # In dry-run mode, skip password prompting
+    if [[ $dry_run == "true" ]]; then
+      echo "[DRY-RUN] Would prompt for user password during installation"
+      user_password="dummy_password_for_dry_run"
+    else
+      # Prompt for password if not set
+      log "INFO" "Prompting for user password during installation"
+      while true; do
+        read -r -s -p "  Password for $system_username: " user_password
+        echo
+        read -r -s -p "  Confirm password: " user_password_confirm
+        echo
+        if [[ "$user_password" == "$user_password_confirm" ]]; then
+          if [[ ${#user_password} -ge 6 ]]; then
+            break
+          else
+            echo "Password must be at least 6 characters long."
+          fi
         else
-          echo "Password must be at least 6 characters long."
+          echo "Passwords do not match. Please try again."
         fi
-      else
-        echo "Passwords do not match. Please try again."
-      fi
-    done
+      done
+    fi
     execute_cmd "printf '%s:%s\n' '$system_username' '$user_password' | chroot $install_root chpasswd" "Setting user password"
   fi
 
