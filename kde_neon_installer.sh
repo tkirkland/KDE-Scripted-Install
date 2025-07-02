@@ -1440,7 +1440,12 @@ fi
   if [[ -n "$kernel_source" ]]; then
     # Find the actual kernel version from the installed system
     local kernel_version
-    kernel_version=$(find "$install_root/lib/modules/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)
+    if [[ $dry_run == "true" ]]; then
+      kernel_version="6.5.0-generic"  # Mock kernel version for dry-run
+      echo "[DRY-RUN] Would determine kernel version from $install_root/lib/modules/"
+    else
+      kernel_version=$(find "$install_root/lib/modules/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)
+    fi
     if [[ -n "$kernel_version" ]]; then
       execute_cmd "cp '$kernel_source/vmlinuz' '$install_root/boot/vmlinuz-$kernel_version'" "Copying kernel image"
       execute_cmd "cp '$kernel_source/initrd' '$install_root/boot/initrd.img-$kernel_version'" "Copying initial ramdisk"
