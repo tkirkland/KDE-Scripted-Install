@@ -753,6 +753,7 @@ select_target_drive() {
 # Load configuration from a file if it exists
 load_configuration() {
   local config_file="${custom_config:-$default_config_file}"
+  local error
 
   if [[ -f $config_file   ]]; then
     echo "Loading saved settings from: $(basename "$config_file")"
@@ -1529,7 +1530,7 @@ phase5_system_configuration() {
   execute_cmd "echo '$system_username:$user_password' | chroot $install_root chpasswd" "Setting user password"
   execute_cmd "chroot $install_root usermod -aG sudo $system_username" "Adding user to sudo group"
   
-  # Create no-password sudoers file if requested
+  # Create a no-password sudoers file if requested
   if [[ "${sudo_nopasswd,,}" =~ ^[Yy]$ ]]; then
     execute_cmd "echo '$system_username ALL=(ALL) NOPASSWD:ALL' | tee $install_root/etc/sudoers.d/$system_username >/dev/null" "Configuring passwordless sudo"
     execute_cmd "chmod 440 $install_root/etc/sudoers.d/$system_username" "Setting sudoers file permissions"
