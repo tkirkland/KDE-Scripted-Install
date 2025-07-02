@@ -1103,7 +1103,6 @@ prompt_for_settings() {
 
   # Auto-detect system settings for defaults
   local detected_locale detected_timezone
-  local user_password_confirm
   detected_locale=$(detect_locale)
   detected_timezone=$(detect_timezone)
 
