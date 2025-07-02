@@ -473,6 +473,8 @@ configure_dhcp_network() {
   # Create DHCP configuration for wired interfaces
   if [[ $dry_run == "true" ]]; then
     echo "[DRY-RUN] Would create DHCP network configuration in $network_config_dir/20-wired.network"
+    [[ -n "$static_domain_search" ]] && echo "  Domain Search: $static_domain_search"
+    [[ -n "$static_dns_suffix" ]] && echo "  DNS Suffix: $static_dns_suffix"
   else
     cat > "$network_config_dir/20-wired.network" << 'EOF'
 [Match]
@@ -487,7 +489,26 @@ IPForward=no
 UseDNS=yes
 UseNTP=yes
 EOF
+
+    # Add domain search entries if provided
+    local domain
+    if [[ -n "$static_domain_search" ]]; then
+      for domain in $static_domain_search; do
+        echo "Domains=$domain" >> "$network_config_dir/20-wired.network"
+      done
+    fi
+    
+    # Add DNS suffix entries if provided
+    local suffix
+    if [[ -n "$static_dns_suffix" ]]; then
+      for suffix in $static_dns_suffix; do
+        echo "Domains=$suffix" >> "$network_config_dir/20-wired.network"
+      done
+    fi
+
     log "INFO" "Created DHCP network configuration"
+    [[ -n "$static_domain_search" ]] && log "INFO" "Added domain search: $static_domain_search"
+    [[ -n "$static_dns_suffix" ]] && log "INFO" "Added DNS suffix: $static_dns_suffix"
   fi
   
   # Enable systemd-networkd
@@ -1000,8 +1021,6 @@ prompt_for_settings() {
       read -r -p "Subnet mask (e.g., 255.255.255.0): " static_netmask
       read -r -p "Gateway (e.g., 192.168.1.1): " static_gateway
       read -r -p "DNS servers (e.g., 8.8.8.8,8.8.4.4): " static_dns
-      read -r -p "Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
-      read -r -p "DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
       
       # Basic validation
       if [[ -z "$static_iface" || -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
@@ -1012,6 +1031,13 @@ prompt_for_settings() {
         break
       fi
     done
+  fi
+  
+  # Collect DNS settings for both DHCP and static (but not manual)
+  if [[ "$network_config" != "manual" ]]; then
+    echo "DNS configuration:"
+    read -r -p "Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
+    read -r -p "DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
   fi
   
   echo
