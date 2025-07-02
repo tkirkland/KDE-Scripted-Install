@@ -416,24 +416,24 @@ check_existing_kde_entries() {
       done
       echo ""
       local selected_entries
+      local boot_num
       read -p "Enter numbers to remove (e.g., 1 3): " -r selected_entries
-        
-        if [[ "$selected_entries" != "none" ]] && [[ -n "$selected_entries" ]]; then
+      
+      if [[ "$selected_entries" != "none" ]] && [[ -n "$selected_entries" ]]; then
           local list_num
           for list_num in $selected_entries; do
             # Validate list number and convert to array index
             if [[ "$list_num" =~ ^[0-9]+$ ]] && (( list_num >= 1 && list_num <= ${#entry_details[@]} )); then
               local array_index=$((list_num - 1))
               local boot_entry="${entry_details[$array_index]}"
-              # Extract boot number from the entry (Boot#### format)
-              local boot_num=$(echo "$boot_entry" | grep -o 'Boot[0-9A-Fa-f]\{4\}' | sed 's/Boot//')
+              # Extract the boot number from the entry (Boot#### format)
+              boot_num=$(echo "$boot_entry" | grep -o 'Boot[0-9A-Fa-f]\{4\}' | sed 's/Boot//')
               execute_cmd "efibootmgr -b $boot_num -B" "Removing selected KDE entry (Boot$boot_num)"
             else
               log "WARN" "Invalid selection: $list_num (must be 1-${#entry_details[@]})"
             fi
           done
         fi
-      fi
     else
       echo "[DRY-RUN] Would prompt user about removing these entries"
     fi
@@ -1244,7 +1244,7 @@ keyboard_layout="${keyboard_layout:-us}"
 # User settings
 user_fullname="${user_fullname:-KDE User}"
 username="${username:-user}"
-user_password_hash="$(echo -n "$user_password" | sha256sum | cut -d' ' -f1)"
+user_password_hash="$(echo -n "${user_password:-}" | sha256sum | cut -d' ' -f1)"
 hostname="${hostname:-kde-neon}"
 
 # Storage settings
@@ -1358,7 +1358,7 @@ phase3_system_installation() {
             squashfs_path="/mnt/source/casper/filesystem.squashfs"
             break
           fi
-          execute_cmd "umount /mnt/source 2>/dev/null || true" "Unmounting $device"
+          execute_cmd "umount /mnt/source 2>/dev/null || true"
         fi
       fi
     done
@@ -1433,8 +1433,8 @@ fi
   fi
 
   # Unmount installation source
-  execute_cmd "umount /mnt/squashfs 2>/dev/null || true" "Unmounting squashfs filesystem"
-  execute_cmd "umount /mnt/source 2>/dev/null || true" "Unmounting installation media"
+  execute_cmd "umount /mnt/squashfs 2>/dev/null || true"
+  execute_cmd "umount /mnt/source 2>/dev/null || true"
 
   log "INFO" "Phase 3 completed successfully"
 }
@@ -1528,11 +1528,11 @@ phase5_system_configuration() {
   local system_username="${username:-user}"
   local system_fullname="${user_fullname:-KDE User}"
   execute_cmd "chroot $install_root useradd -m -s /bin/bash -c '$system_fullname' $system_username" "Creating user account"
-  execute_cmd "echo '$system_username:$user_password' | chroot $install_root chpasswd" "Setting user password"
+  execute_cmd "echo '$system_username:${user_password:-defaultpass}' | chroot $install_root chpasswd" "Setting user password"
   execute_cmd "chroot $install_root usermod -aG sudo $system_username" "Adding user to sudo group"
   
   # Create a no-password sudoers file if requested
-  if [[ "${sudo_nopasswd,,}" =~ ^[Yy]$ ]]; then
+  if [[ "${sudo_nopasswd:-n}" =~ ^[Yy]$ ]]; then
     execute_cmd "echo '$system_username ALL=(ALL) NOPASSWD:ALL' | tee $install_root/etc/sudoers.d/$system_username >/dev/null" "Configuring passwordless sudo"
     execute_cmd "chmod 440 $install_root/etc/sudoers.d/$system_username" "Setting sudoers file permissions"
   fi
@@ -1546,14 +1546,15 @@ phase5_system_configuration() {
   # Initramfs was already updated in Phase 4 after GRUB configuration
 
   # Unmount chroot filesystems (reverse order of mounting)
-  execute_cmd "umount $install_root/sys/firmware/efi/efivars" "Unmounting EFI variables"
-  execute_cmd "umount $install_root/tmp" "Unmounting /tmp"
-  execute_cmd "umount $install_root/dev/pts" "Unmounting /dev/pts"
-  execute_cmd "umount $install_root/run" "Unmounting /run"
-  execute_cmd "umount $install_root/dev" "Unmounting /dev"
-  execute_cmd "umount $install_root/sys" "Unmounting /sys"
-  execute_cmd "umount $install_root/proc" "Unmounting /proc"
-  execute_cmd "umount $install_root/boot/efi $install_root" "Unmounting installation partitions"
+  umount "$install_root/sys/firmware/efi/efivars" 2>/dev/null || true
+  umount "$install_root/tmp" 2>/dev/null || true
+  umount "$install_root/dev/pts" 2>/dev/null || true
+  umount "$install_root/run" 2>/dev/null || true
+  umount "$install_root/dev" 2>/dev/null || true
+  umount "$install_root/sys" 2>/dev/null || true
+  umount "$install_root/proc" 2>/dev/null || true
+  umount "$install_root/boot/efi" 2>/dev/null || true
+  umount "$install_root" 2>/dev/null || true
 
   log "INFO" "Phase 5 completed successfully"
 }
@@ -1680,7 +1681,7 @@ main() {
       if [[ $dry_run == "false" ]]; then
         # Unmount all filesystems in install_root (reverse order for nested mounts)
         mount | grep "$install_root" | awk '{print $3}' | sort -r | while read -r mountpoint; do
-          execute_cmd "umount $mountpoint" "Unmounting $mountpoint"
+          execute_cmd "umount $mountpoint"
         done
       else
         echo "[DRY-RUN] Would unmount filesystems mounted in $install_root"
