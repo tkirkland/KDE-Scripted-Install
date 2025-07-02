@@ -904,6 +904,7 @@ prompt_for_settings() {
   
   # Auto-detect system settings for defaults
   local detected_locale detected_timezone
+  local user_password_confirm
   detected_locale=$(detect_locale)
   detected_timezone=$(detect_timezone)
   
@@ -929,6 +930,23 @@ prompt_for_settings() {
   # Username
   read -r -p "Username [user]: " input
   username="${input:-user}"
+  
+  # User password
+  while true; do
+    read -r -s -p "Password for $username: " user_password
+    echo
+    read -r -s -p "Confirm password: " user_password_confirm
+    echo
+    if [[ "$user_password" == "$user_password_confirm" ]]; then
+      if [[ ${#user_password} -ge 6 ]]; then
+        break
+      else
+        echo "Password must be at least 6 characters long."
+      fi
+    else
+      echo "Passwords do not match. Please try again."
+    fi
+  done
   
   # Hostname
   read -r -p "Hostname [kde-neon]: " input
@@ -1018,6 +1036,7 @@ keyboard_layout="${keyboard_layout:-us}"
 # User settings
 user_fullname="${user_fullname:-KDE User}"
 username="${username:-user}"
+user_password_hash="$(echo -n "$user_password" | sha256sum | cut -d' ' -f1)"
 hostname="${hostname:-kde-neon}"
 
 # Storage settings
@@ -1147,12 +1166,12 @@ phase3_system_installation() {
   log "INFO" "Extracting system files from squashfs (this will take several minutes)..."
   if [[ $dry_run == "true" ]]; then
     echo "[DRY-RUN] Would extract squashfs system files with rsync"
-  else
+else
     # Run rsync quietly and log the summary
     local rsync_start_time
     local rsync_end_time
     local rsync_duration
-    
+
     rsync_start_time=$(date +%s)
     rsync -a --quiet \
       --exclude='/proc' --exclude='/sys' \
@@ -1162,8 +1181,8 @@ phase3_system_installation() {
       rsync_end_time=$(date +%s)
       rsync_duration=$((rsync_end_time - rsync_start_time))
       log "INFO" "System file extraction completed in ${rsync_duration}s"
-    }
-  fi
+  }
+fi
   # Create essential directories
   local dir
   for dir in proc sys dev run tmp; do
@@ -1296,6 +1315,13 @@ phase5_system_configuration() {
 
   # Configure network settings
   configure_network_settings
+
+  # Create a user account
+  local system_username="${username:-user}"
+  local system_fullname="${user_fullname:-KDE User}"
+  execute_cmd "chroot $install_root useradd -m -s /bin/bash -c '$system_fullname' $system_username" "Creating user account"
+  execute_cmd "echo '$system_username:$user_password' | chroot $install_root chpasswd" "Setting user password"
+  execute_cmd "chroot $install_root usermod -aG sudo $system_username" "Adding user to sudo group"
 
   # Remove live system packages
   execute_cmd "chroot $install_root apt-get -qq -y purge calamares neon-live casper '^live-*' >/dev/null 2>&1" "Purging live system packages"
