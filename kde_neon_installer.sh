@@ -30,10 +30,7 @@ load_modules() {
   source "${lib_dir}/config.sh"
   source "${lib_dir}/network.sh"
   
-  # Set global variables for other functions
-  # Use lowercase to satisfy shellcheck, even though these are constants
-  declare -gr script_dir_global="$script_dir"
-  declare -gr lib_dir_global="$lib_dir"
+  # Module loading complete - no additional globals needed
 }
 
 # Display help information and usage examples
