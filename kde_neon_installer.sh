@@ -757,8 +757,144 @@ load_configuration() {
   if [[ -f $config_file   ]]; then
     echo "Loading saved settings from: $(basename "$config_file")"
     log "INFO" "Loading configuration from: $config_file"
+    
+    # Validate configuration file syntax before sourcing
+    if ! bash -n "$config_file" 2>/dev/null; then
+      echo -e "${RED}✗ Configuration file is corrupted (syntax error)${NC}"
+      log "ERROR" "Configuration file has syntax errors: $config_file"
+      
+      if [[ $dry_run == "false" ]]; then
+        local choice
+        read -r -p "Delete corrupted configuration and start fresh? (y/N): " choice
+        if [[ "${choice,,}" =~ ^[Yy]$ ]]; then
+          rm -f "$config_file"
+          echo "Corrupted configuration deleted."
+          log "INFO" "Deleted corrupted configuration file: $config_file"
+          return 1
+        else
+          echo "Keeping corrupted file. Installation cannot continue with invalid configuration."
+          log "ERROR" "User chose to keep corrupted configuration file"
+          return 1
+        fi
+      else
+        echo "[DRY-RUN] Would offer to delete corrupted configuration file"
+        return 1
+      fi
+    fi
+    
     # shellcheck source=/dev/null
     source "$config_file"
+    
+    # Comprehensive validation of configuration content
+    local validation_errors=()
+    
+    # Check file integrity and basic structure
+    if [[ $(wc -l < "$config_file") -lt 5 ]]; then
+      validation_errors+=("File too small - appears truncated or empty")
+    fi
+    
+    # Validate required variables are present and not empty
+    [[ -z "$network_config" ]] && validation_errors+=("Missing required variable: network_config")
+    [[ -z "$locale" ]] && validation_errors+=("Missing required variable: locale")
+    [[ -z "$timezone" ]] && validation_errors+=("Missing required variable: timezone")
+    [[ -z "$username" ]] && validation_errors+=("Missing required variable: username")
+    [[ -z "$hostname" ]] && validation_errors+=("Missing required variable: hostname")
+    
+    
+    # Validate network configuration
+    if [[ -n "$network_config" && ! "$network_config" =~ ^(dhcp|static|manual)$ ]]; then
+      validation_errors+=("Invalid network_config: $network_config (must be dhcp, static, or manual)")
+    fi
+    
+    # Validate static network settings if network_config is static
+    if [[ "$network_config" == "static" ]]; then
+      [[ -z "$static_iface" ]] && validation_errors+=("Static network missing: static_iface")
+      [[ -z "$static_ip" ]] && validation_errors+=("Static network missing: static_ip")
+      [[ -z "$static_netmask" ]] && validation_errors+=("Static network missing: static_netmask")
+      [[ -z "$static_gateway" ]] && validation_errors+=("Static network missing: static_gateway")
+      
+      # Validate IP address format
+      if [[ -n "$static_ip" && ! "$static_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        validation_errors+=("Invalid static_ip format: $static_ip")
+      fi
+      
+      # Validate netmask format
+      if [[ -n "$static_netmask" && ! "$static_netmask" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        validation_errors+=("Invalid static_netmask format: $static_netmask")
+      fi
+      
+      # Validate gateway format
+      if [[ -n "$static_gateway" && ! "$static_gateway" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        validation_errors+=("Invalid static_gateway format: $static_gateway")
+      fi
+    fi
+    
+    # Validate locale format
+    if [[ -n "$locale" && ! "$locale" =~ ^[a-z]{2}_[A-Z]{2}\.(UTF-8|utf8)$ ]]; then
+      validation_errors+=("Invalid locale format: $locale (expected format: en_US.UTF-8)")
+    fi
+    
+    # Validate timezone format
+    if [[ -n "$timezone" && ! "$timezone" =~ ^[A-Za-z_]+/[A-Za-z_]+$ ]]; then
+      validation_errors+=("Invalid timezone format: $timezone (expected format: America/New_York)")
+    fi
+    
+    # Validate keyboard layout
+    if [[ -n "$keyboard_layout" && ! "$keyboard_layout" =~ ^[a-z]{2,3}$ ]]; then
+      validation_errors+=("Invalid keyboard_layout: $keyboard_layout (expected 2-3 letter code)")
+    fi
+    
+    # Validate username format
+    if [[ -n "$username" && ! "$username" =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; then
+      validation_errors+=("Invalid username: $username (must start with letter, lowercase, max 32 chars)")
+    fi
+    
+    # Validate hostname format
+    if [[ -n "$hostname" && ! "$hostname" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}[a-zA-Z0-9]?$ ]]; then
+      validation_errors+=("Invalid hostname: $hostname (invalid format)")
+    fi
+    
+    # Validate swap size format
+    if [[ -n "$swap_size" && ! "$swap_size" =~ ^[0-9]+[GMK]?$ ]]; then
+      validation_errors+=("Invalid swap_size: $swap_size (expected format: 4G, 512M, etc.)")
+    fi
+    
+    # Validate root filesystem
+    if [[ -n "$root_fs" && ! "$root_fs" =~ ^(ext4|ext3|xfs|btrfs)$ ]]; then
+      validation_errors+=("Invalid root_fs: $root_fs (must be ext4, ext3, xfs, or btrfs)")
+    fi
+    
+    # Check for conflicting settings
+    if [[ "$network_config" == "manual" && (-n "$static_ip" || -n "$static_gateway") ]]; then
+      validation_errors+=("Conflicting settings: manual network with static IP configuration")
+    fi
+    
+    # If validation errors found, handle them
+    if [[ ${#validation_errors[@]} -gt 0 ]]; then
+      echo -e "${RED}✗ Configuration file has validation errors${NC}"
+      for error in "${validation_errors[@]}"; do
+        log "ERROR" "Config validation: $error"
+      done
+      
+      if [[ $dry_run == "false" ]]; then
+        local choice
+        read -r -p "Delete corrupted configuration and start fresh? (y/N): " choice
+        if [[ "${choice,,}" =~ ^[Yy]$ ]]; then
+          rm -f "$config_file"
+          echo "Corrupted configuration deleted."
+          log "INFO" "Deleted invalid configuration file: $config_file"
+          return 1
+        else
+          echo "Keeping invalid file. Will prompt for all settings to correct issues."
+          log "WARN" "User chose to keep invalid configuration file"
+          return 1
+        fi
+      else
+        echo "[DRY-RUN] Would offer to delete invalid configuration file"
+        return 1
+      fi
+    fi
+    
     echo -e "${GREEN}✓ Configuration loaded${NC}"
     
     # Show current settings to the user
@@ -773,6 +909,8 @@ load_configuration() {
     echo "  Swap Size: ${swap_size:-4G}"
     echo "  Root Filesystem: ${root_fs:-ext4}"
     echo "  Network Config: ${network_config:-dhcp}"
+    [[ -n "$static_domain_search" ]] && echo "  Domain Search: $static_domain_search"
+    [[ -n "$static_dns_suffix" ]] && echo "  DNS Suffix: $static_dns_suffix"
     echo
     
     if [[ $dry_run == "false" ]]; then
@@ -930,28 +1068,37 @@ prompt_for_settings() {
   detected_locale=$(detect_locale)
   detected_timezone=$(detect_timezone)
   
-  # Prompt for all settings with auto-detected defaults
+  # Prompt for all settings with loaded config or auto-detected defaults
   local input
+  local default_locale="${locale:-$detected_locale}"
+  local default_timezone="${timezone:-$detected_timezone}"
+  local default_keyboard="${keyboard_layout:-us}"
+  local default_fullname="${user_fullname:-KDE User}"
+  local default_username="${username:-user}"
   
-  # Locale (auto-detected default)
-  read -r -p "Locale [$detected_locale]: " input
-  locale="${input:-$detected_locale}"
+  # Locale (use loaded config or auto-detected default)
+  read -r -p "Locale [$default_locale]: " input
+  locale="${input:-$default_locale}"
   
-  # Timezone (auto-detected default)
-  read -r -p "Timezone [$detected_timezone]: " input
-  timezone="${input:-$detected_timezone}"
+  # Timezone (use loaded config or auto-detected default)
+  read -r -p "Timezone [$default_timezone]: " input
+  timezone="${input:-$default_timezone}"
   
   # Keyboard layout
-  read -r -p "Keyboard layout [us]: " input
-  keyboard_layout="${input:-us}"
+  read -r -p "Keyboard layout [$default_keyboard]: " input
+  keyboard_layout="${input:-$default_keyboard}"
   
   # User full name
-  read -r -p "User full name [KDE User]: " input
-  user_fullname="${input:-KDE User}"
+  read -r -p "User full name [$default_fullname]: " input
+  user_fullname="${input:-$default_fullname}"
   
   # Username
-  read -r -p "Username [user]: " input
-  username="${input:-user}"
+  read -r -p "Username [$default_username]: " input
+  username="${input:-$default_username}"
+  
+  # No password sudo option
+  read -r -n 1 -p "  Add to passwordless sudo? (y/n): " sudo_nopasswd
+  echo  # Move to next line after single character input
   
   # User password
   while true; do
@@ -971,16 +1118,19 @@ prompt_for_settings() {
   done
   
   # Hostname
-  read -r -p "Hostname [kde-neon]: " input
-  hostname="${input:-kde-neon}"
+  local default_hostname="${hostname:-kde-neon}"
+  read -r -p "Hostname [$default_hostname]: " input
+  hostname="${input:-$default_hostname}"
   
   # Swap size
-  read -r -p "Swap file size [4G]: " input
-  swap_size="${input:-4G}"
+  local default_swap="${swap_size:-4G}"
+  read -r -p "Swap file size [$default_swap]: " input
+  swap_size="${input:-$default_swap}"
   
   # Root filesystem
-  read -r -p "Root filesystem [ext4]: " input
-  root_fs="${input:-ext4}"
+  local default_fs="${root_fs:-ext4}"
+  read -r -p "Root filesystem [$default_fs]: " input
+  root_fs="${input:-$default_fs}"
   
   # Network config
   echo "Available network configurations:"
@@ -989,8 +1139,9 @@ prompt_for_settings() {
   echo "  manual  - Manual network setup after installation"
   
   while true; do
-    read -r -p "Network configuration [dhcp]: " input
-    network_config="${input:-dhcp}"
+    local default_network="${network_config:-dhcp}"
+    read -r -p "Network configuration [$default_network]: " input
+    network_config="${input:-$default_network}"
     
     case "$network_config" in
       dhcp|static|manual)
@@ -1011,16 +1162,26 @@ prompt_for_settings() {
     
     while true; do
       echo "Static IP configuration:"
-      if [[ -n "$current_iface" ]]; then
-        read -r -p "Network interface [$current_iface]: " static_iface
-        static_iface="${static_iface:-$current_iface}"
+      local default_iface="${static_iface:-$current_iface}"
+      local default_ip="${static_ip:-192.168.1.100}"
+      local default_netmask="${static_netmask:-255.255.255.0}"
+      local default_gateway="${static_gateway:-192.168.1.1}"
+      local default_dns="${static_dns:-8.8.8.8,8.8.4.4}"
+      
+      if [[ -n "$default_iface" ]]; then
+        read -r -p "Network interface [$default_iface]: " input
+        static_iface="${input:-$default_iface}"
       else
         read -r -p "Network interface (e.g., enp0s3, eth0): " static_iface
       fi
-      read -r -p "IP address (e.g., 192.168.1.100): " static_ip
-      read -r -p "Subnet mask (e.g., 255.255.255.0): " static_netmask
-      read -r -p "Gateway (e.g., 192.168.1.1): " static_gateway
-      read -r -p "DNS servers (e.g., 8.8.8.8,8.8.4.4): " static_dns
+      read -r -p "IP address [$default_ip]: " input
+      static_ip="${input:-$default_ip}"
+      read -r -p "Subnet mask [$default_netmask]: " input
+      static_netmask="${input:-$default_netmask}"
+      read -r -p "Gateway [$default_gateway]: " input
+      static_gateway="${input:-$default_gateway}"
+      read -r -p "DNS servers [$default_dns]: " input
+      static_dns="${input:-$default_dns}"
       
       # Basic validation
       if [[ -z "$static_iface" || -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
@@ -1035,9 +1196,25 @@ prompt_for_settings() {
   
   # Collect DNS settings for both DHCP and static (but not manual)
   if [[ "$network_config" != "manual" ]]; then
-    echo "DNS configuration:"
-    read -r -p "Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
-    read -r -p "DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
+    echo "  DNS configuration:"
+    local default_dns_suffix="${static_dns_suffix:-}"
+    
+    if [[ -n "$default_dns_suffix" ]]; then
+      read -r -p "  DNS suffix [$default_dns_suffix]: " input
+      static_dns_suffix="${input:-$default_dns_suffix}"
+    else
+      read -r -p "  DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
+    fi
+    
+    # Use suffix as fallback default for search if no saved search domain
+    local default_domain_search="${static_domain_search:-$static_dns_suffix}"
+    
+    if [[ -n "$default_domain_search" ]]; then
+      read -r -p "  Domain search [$default_domain_search]: " input
+      static_domain_search="${input:-$default_domain_search}"
+    else
+      read -r -p "  Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
+    fi
   fi
   
   echo
@@ -1058,7 +1235,6 @@ save_configuration() {
 # Generated: $(date)
 
 # System settings
-target_drive="$target_drive"
 locale="${locale:-en_US.UTF-8}"
 timezone="${timezone:-$(detect_timezone)}"
 keyboard_layout="${keyboard_layout:-us}"
@@ -1352,6 +1528,12 @@ phase5_system_configuration() {
   execute_cmd "chroot $install_root useradd -m -s /bin/bash -c '$system_fullname' $system_username" "Creating user account"
   execute_cmd "echo '$system_username:$user_password' | chroot $install_root chpasswd" "Setting user password"
   execute_cmd "chroot $install_root usermod -aG sudo $system_username" "Adding user to sudo group"
+  
+  # Create no-password sudoers file if requested
+  if [[ "${sudo_nopasswd,,}" =~ ^[Yy]$ ]]; then
+    execute_cmd "echo '$system_username ALL=(ALL) NOPASSWD:ALL' | tee $install_root/etc/sudoers.d/$system_username >/dev/null" "Configuring passwordless sudo"
+    execute_cmd "chmod 440 $install_root/etc/sudoers.d/$system_username" "Setting sudoers file permissions"
+  fi
 
   # Remove live system packages
   execute_cmd "chroot $install_root apt-get -qq -y purge calamares neon-live casper '^live-*' >/dev/null 2>&1" "Purging live system packages"
@@ -1492,14 +1674,8 @@ main() {
     
     # Check if anything is mounted in the installation root
     if mount | grep -q "$install_root"; then
-      echo -e "${YELLOW}Warning: Filesystems detected mounted in $install_root${NC}"
+      echo "Previous mounts detected - unmounting to avoid conflicts"
       if [[ $dry_run == "false" ]]; then
-        echo "These filesystems will be unmounted before cleaning the directory."
-        read -r -p "Continue and unmount these filesystems? (y/N): " confirm
-        if [[ ! $confirm =~ ^[Yy]$ ]]; then
-          log "INFO" "Installation cancelled by user"
-          exit 0
-        fi
         # Unmount all filesystems in install_root (reverse order for nested mounts)
         mount | grep "$install_root" | awk '{print $3}' | sort -r | while read -r mountpoint; do
           execute_cmd "umount $mountpoint" "Unmounting $mountpoint"

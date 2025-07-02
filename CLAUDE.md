@@ -4,191 +4,203 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a logparser project set up for IntelliJ IDEA development. The project is in its initial stages with only IDE configuration files present.
+This is a KDE Neon automated installer project featuring a comprehensive command-line installation system with advanced safety features, configuration management, and dual-boot protection.
 
 ## Development Environment
 
-- **IDE**: IntelliJ IDEA (configuration files in `.idea/`)
-- **Module**: General module type (see `logparser.iml`)
+- **Target System**: KDE Neon live environment
+- **Hardware**: UEFI systems with NVMe storage
+- **Dependencies**: Standard Linux utilities, GRUB, systemd-networkd
 
 ## Project Architecture
 
-This logparser project includes tools for analyzing installation logs and extracting executed commands.
+This KDE Neon installer provides automated installation with extensive validation, configuration persistence, and safety mechanisms.
 
 ### Core Components
 
-- **parse_kde_install.sh**: Main parser script that extracts commands from KDE Calamares installation logs
-- **session.log**: Sample KDE installation log file containing detailed installation process
-- **Generated scripts**: Output scripts containing extracted and reproduced commands
+- **kde_neon_installer.sh**: Main installer script with 5-phase installation process
+- **install.conf**: Configuration persistence file with comprehensive validation
+- **logs/**: Timestamped installation logs for debugging and analysis
 
-### Command Patterns Parsed
+### Installation Process
 
-The parser identifies and extracts:
-1. **QList Commands**: Commands executed via Qt's QList structure (primary pattern)
-2. **Shell Commands**: Direct shell command executions
-3. **Filesystem Operations**: Mount, unmount, partition, and filesystem commands
-4. **Package Management**: APT operations for package installation/removal
+The installer follows a structured approach:
+1. **Configuration Management**: Load/validate saved settings or prompt for new configuration
+2. **System Preparation**: Hardware validation, drive enumeration, Windows detection
+3. **Partitioning**: EFI and root partition creation with proper alignment
+4. **System Installation**: Filesystem creation, mounting, and system extraction
+5. **Boot Configuration**: GRUB installation, EFI setup, boot entry management
+6. **System Configuration**: Network setup, user creation, package cleanup
+
+## Current Implementation Status
+
+### ✅ Completed Features
+
+**Configuration Management:**
+- Interactive prompts with auto-detected defaults
+- Configuration persistence in `install.conf`
+- Comprehensive validation with corruption detection
+- Edit mode with current values as defaults
+- DNS settings for both DHCP and static network configurations
+
+**Safety Features:**
+- Windows installation detection for dual-boot protection
+- NVMe drive enumeration and validation
+- UEFI boot mode verification
+- Boot entry management with conflict resolution
+- Comprehensive error handling and logging
+
+**Installation Process:**
+- 5-phase structured installation
+- Clean command output (installer messages only)
+- Dry-run mode for testing
+- User account creation with password validation
+- Network configuration (DHCP, static, manual)
+- Swap file creation with RAM-based sizing
+
+**System Integration:**
+- KDE Neon-specific package cleanup
+- systemd-networkd configuration
+- EFI boot entry naming ("KDE Neon")
+- System clock configuration (local time)
+
+### Configuration Validation System
+
+The installer includes robust validation for configuration files:
+
+**Syntax and Integrity:**
+- Shell script syntax validation before sourcing
+- File truncation detection (minimum line count)
+- Binary data detection in text files
+
+**Required Variables:**
+- `target_drive`, `network_config`, `locale`, `timezone`
+- `username`, `hostname`, filesystem and swap settings
+
+**Format Validation:**
+- Drive paths: `/dev/nvmeXnY` pattern matching
+- Network settings: IP address format validation
+- Locale: `en_US.UTF-8` format compliance
+- Timezone: `America/New_York` format validation
+- Username: Linux username standards (lowercase, starting with letter)
+- Hostname: Valid hostname format compliance
+
+**Consistency Checks:**
+- Static network configuration completeness
+- Conflicting settings detection (manual network with static IP)
+- Cross-field validation dependencies
+
+**Recovery Mechanisms:**
+- Automatic corruption detection on startup
+- Detailed error listing with specific descriptions
+- User choice to delete corrupted configurations
+- Comprehensive logging of validation failures
+
+## Development Guidelines
+
+### Code Standards
+- Use `execute_cmd` function for all system commands
+- Redirect command output to log files (clean user interface)
+- Implement comprehensive error handling with descriptive messages
+- Follow existing logging patterns with timestamps
+
+### Testing
+- Always test with `--dry-run` mode first
+- Test configuration validation with corrupted files
+- Verify edit mode shows current defaults correctly
+- Test all network configuration types (dhcp, static, manual)
+
+### Security
+- Validate all user inputs before use
+- Use proper quoting for file paths and variables
+- Hash passwords before storage
+- Avoid exposing sensitive information in logs
+
+## Future Development Priorities
+
+### Enhanced Validation
+- IP address range validation for static configurations
+- Subnet mask compatibility checks with IP addresses
+- Gateway reachability validation
+- DNS server accessibility testing
+
+### User Experience
+- Progress indicators for long operations
+- Better error recovery suggestions
+- Configuration import/export functionality
+- Installation resume capability
+
+### Advanced Features
+- Support for additional filesystems (btrfs, xfs)
+- Multiple drive installation scenarios
+- Enterprise network integration (domain joining)
+- Full disk encryption support
+
+### Code Quality
+- Unit tests for validation functions
+- Integration tests for installation phases
+- Performance optimization for large operations
+- Memory usage monitoring during installation
 
 ## Common Development Tasks
 
-### Running the Parser
+### Testing Configuration Validation
 ```bash
-# Parse session.log and generate extracted_commands.sh
-./parse_kde_install.sh
+# Test with corrupted config
+echo "invalid syntax here" > install.conf
+sudo ./kde_neon_installer.sh --dry-run
 
-# Parse custom log file with custom output
-./parse_kde_install.sh /path/to/logfile.log output_script.sh
+# Test with missing variables
+echo 'network_config="dhcp"' > install.conf
+sudo ./kde_neon_installer.sh --dry-run
 ```
 
-### Analyzing Command Patterns
-The parser extracts commands from log patterns like:
-- `.. Running QList("command", "arg1", "arg2")`
-- Shell execution contexts
-- Filesystem operation references
+### Running Installation Tests
+```bash
+# Full dry-run test
+sudo ./kde_neon_installer.sh --dry-run
 
-## Log Format
+# Test with custom config
+sudo ./kde_neon_installer.sh --config test.conf --dry-run
 
-The session.log follows Calamares installer format:
-- Timestamped entries: `YYYY-MM-DD - HH:MM:SS [thread]:`
-- Command execution logged as QList structures
-- Hierarchical job execution with progress tracking
+# Test edit mode
+sudo ./kde_neon_installer.sh --dry-run
+# Choose "edit" when prompted
+```
 
-## Implementation Tasks
+### Debugging
+```bash
+# Enable debug logging
+export DEBUG=1
+sudo ./kde_neon_installer.sh --dry-run
 
-### Current Priority Tasks
-1. **Core Installer Script Structure**
-   - Create main installer script with modular function architecture
-   - Implement command-line argument parsing (--dry-run, --log-path, --config)
-   - Add logging system with timestamped entries to script directory
+# Check validation logs
+tail -f logs/kde-install-*.log | grep -E "(ERROR|WARN|Config validation)"
+```
 
-2. **Drive Management System**
-   - Build NVMe drive enumeration and filtering
-   - Implement Windows installation detection for dual-boot safety
-   - Create drive selection interface with validation
+## Implementation Notes
 
-3. **Installation Phases**
-   - **Phase 1**: System preparation and validation
-   - **Phase 2**: Partitioning and filesystem creation
-   - **Phase 3**: System installation and file copying
-   - **Phase 4**: Bootloader and EFI configuration
-   - **Phase 5**: System configuration and cleanup
+### Configuration File Format
+The `install.conf` file uses shell variable assignments:
+```bash
+target_drive="/dev/nvme0n1"
+locale="en_US.UTF-8"
+network_config="dhcp"
+static_domain_search="local.lan example.com"
+static_dns_suffix="corp.local"
+```
 
-4. **Configuration Management**
-   - Create settings persistence system
-   - Implement initial setup prompts with validation
-   - Add configuration file management (save/load/validate)
+### Network Configuration Types
+- **dhcp**: Automatic IP with optional DNS settings
+- **static**: Manual IP, gateway, DNS with required field validation
+- **manual**: Post-installation manual configuration
 
-5. **KDE Neon Integration**
-   - Integrate KDE Neon-specific helpers (/usr/bin/calamares-*)
-   - Implement filesystem cleanup and package management
-   - Configure systemd-networkd and locale settings
+### Validation Error Handling
+All validation errors are collected and presented together, allowing users to see all issues at once rather than fixing them one by one.
 
-6. **System Configuration**
-   - Set system clock to local time (not UTC)
-   - Configure EFI boot entry as "KDE Neon"
-   - Implement swap file creation based on RAM sizing
+### DNS Settings Application
+DNS search domains and suffixes are applied to both DHCP and static network configurations using systemd-networkd `Domains=` entries.
 
-## Future Development Items
+---
 
-### Enhanced Hardware Support
-- Support for non-NVMe drives (SATA SSDs, mechanical drives)
-- Multi-drive installation scenarios
-- Advanced partitioning schemes beyond simple 2-partition setup
-
-### Configuration Management
-- Multiple configuration profiles for different deployment scenarios
-- Configuration import/export functionality
-- Template-based configurations for bulk deployments
-
-### Advanced Boot Configuration
-- Triple-boot and complex multi-boot scenarios
-- Custom boot entry management beyond simple "KDE Neon" naming
-- Boot recovery and repair tools integration
-
-### Network and Connectivity
-- WiFi configuration during installation
-- Enterprise network integration (domain joining, certificates)
-- Proxy and firewall configuration automation
-
-### Post-Installation Automation
-- Automated software installation from predefined lists
-- User account and permission setup automation
-- System monitoring and health check integration
-
-### Security Enhancements
-- Full disk encryption support
-- Advanced Secure Boot management
-- Security policy enforcement and compliance checking
-
-### User Experience Improvements
-- GUI wrapper for the command-line installer
-- Progress visualization and better user feedback
-- Installation resume capability after interruption
-
-### Enterprise Features
-- Integration with deployment systems (Ansible, Puppet, etc.)
-- Centralized logging and reporting
-- Remote installation monitoring and management
-
-## Technical Requirements
-
-### Hardware & Environment
-- **Boot System**: UEFI-only systems (no legacy BIOS support)
-- **Storage**: NVMe drives only (/dev/nvmeXXX)
-- **Dual-Boot**: Windows detection for safety (prevent accidental overwrites)
-- **Secure Boot**: Enabled with MOK signing for graphics drivers
-- **Drive Selection**: Internal drives only, exclude USB/external
-
-### Installation Source
-- **Source**: Live ISO filesystem extraction
-- **Network**: Required for package updates and drivers
-- **Package Selection**: Minimal KDE Neon installation
-- **Drivers**: Automatic detection and MOK signing
-
-### Partitioning & Storage
-- **Partition Scheme**: Simple 2-partition (EFI + root)
-- **Filesystem**: ext4 for root partition
-- **Swap**: Swap file (not partition) with RAM-based sizing
-- **Drive Policy**: Single drive installations only
-
-### User Experience
-- **Error Handling**: Comprehensive validation and recovery
-- **Progress**: Clear progress indication throughout installation
-- **Validation**: Pre-flight checks for all requirements
-- **Logging**: Detailed logging for troubleshooting
-
-### Configuration Persistence
-- **Scope**: Installation settings and preferences
-- **Storage**: Local configuration files in script directory
-- **Profiles**: Single configuration profile support
-- **Management**: Save/load/validate configuration settings
-
-### System Integration
-- **Existing Systems**: Windows detection and dual-boot safety
-- **Hardware Detection**: Automatic graphics driver detection
-- **Post-Install**: systemd-networkd configuration, locale setup
-- **Clock**: System clock set to local time (not UTC)
-- **Boot Entry**: EFI entry renamed to "KDE Neon"
-
-## KDE Neon Specific Components
-
-### Calamares Helper Scripts
-- `/usr/bin/calamares-l10n-helper`: Localization and translation setup
-- `/usr/bin/calamares-logs-helper`: Installation log management
-- Custom filesystem cleanup modules
-
-### Configuration Files
-- `/calamares/desktop/settings.conf`: Installation sequence configuration
-- `/calamares/desktop/modules/grubcfg.conf`: GRUB configuration with cryptodisk support
-- Shell process configurations for boot reconfiguration
-
-### Package Management
-- **Remove**: calamares, neon-live, casper, '^live-*'
-- **Filesystem Tools**: Intelligent cleanup of unused filesystem packages
-- **Graphics Drivers**: Automatic detection and MOK signing
-
-### System Configuration
-- **Network**: systemd-networkd (replacing netplan)
-- **Boot**: EFI bootloader ID changed from "neon" to "KDE Neon"
-- **Locale**: Translation and localization helper integration
-- **Cleanup**: Automated live system package removal
+This installer provides a robust, safe, and user-friendly way to install KDE Neon with comprehensive configuration management and validation.

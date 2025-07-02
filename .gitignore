@@ -69,12 +69,6 @@ Thumbs.db
 *.cert
 *.p12
 *.pfx
-
-# Backup files
-*~
-*.bak
-*.backup
-*.orig
 *.rej
 
 # Python cache (if any Python scripts are added)
@@ -105,13 +99,11 @@ site/
 .env.*.local
 
 # OS generated files
-.DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db
 
 # Backup files created by package managers
 *.dpkg-old
@@ -135,3 +127,4 @@ secrets/
 private/
 credentials/
 passwords.txt
+/install.conf

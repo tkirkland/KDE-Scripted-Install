@@ -137,6 +137,27 @@ swap_size=8G
 filesystem=ext4
 ```
 
+### Configuration Validation
+The installer includes comprehensive validation for configuration files:
+
+**Corruption Detection:**
+- **Syntax validation**: Checks for shell script syntax errors
+- **File integrity**: Detects truncated or empty configuration files
+- **Required variables**: Ensures all mandatory settings are present
+- **Format validation**: Validates drive paths, IP addresses, locale formats, etc.
+- **Consistency checks**: Detects conflicting settings (e.g., manual network with static IP)
+
+**Automatic Recovery:**
+- Detects corrupted configurations on startup
+- Lists specific validation errors with clear descriptions
+- Offers to delete corrupted files and start fresh
+- Maintains detailed logs of validation failures
+
+**Edit Mode Defaults:**
+- When editing saved configurations, all prompts show current values as defaults
+- Press Enter to keep existing values, or type new values to change them
+- Ensures smooth configuration updates without re-entering all settings
+
 ### Command Line Options
 ```bash
 Usage: kde_neon_installer.sh [options]
