@@ -1711,11 +1711,7 @@ main() {
     echo "This data will be removed to prepare for the new installation."
     echo
     if [[ $dry_run == "false"   ]]; then
-      read -r -p "Continue and remove existing data? (y/N): " confirm
-      if [[ ! $confirm =~ ^[Yy]$   ]]; then
-        log "INFO" "Installation cancelled by user"
-        exit 0
-      fi
+      echo "Existing data is being automatically cleaned..."
       execute_cmd "rm -rf $install_root/*" "Cleaning installation directory"
     else
       echo "[DRY-RUN] Would prompt: Continue and remove existing data? (y/N)"
