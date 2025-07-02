@@ -1462,10 +1462,8 @@ main() {
     
     # Check if anything is mounted in the installation root
     if mount | grep -q "$install_root"; then
-      echo -e "${YELLOW}Warning: Filesystems are mounted in $install_root${NC}"
+      echo -e "${YELLOW}Warning: Filesystems detected mounted in $install_root${NC}"
       if [[ $dry_run == "false" ]]; then
-        mount | grep "$install_root"
-        echo ""
         echo "These filesystems will be unmounted before cleaning the directory."
         read -r -p "Continue and unmount these filesystems? (y/N): " confirm
         if [[ ! $confirm =~ ^[Yy]$ ]]; then
