@@ -956,29 +956,30 @@ load_configuration() {
 # Clear all configuration variables
 clear_configuration() {
   unset locale timezone keyboard_layout user_fullname username hostname swap_size root_fs network_config
+  unset user_password sudo_nopasswd
 }
 
 # Auto-detect timezone using GeoIP (like original Calamares)
 detect_timezone_geoip() {
   local detected_tz=""
-  
+
   # Try ipinfo.io first (HTTPS, secure)
   if command -v curl >/dev/null 2>&1; then
     detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "https://ipinfo.io/json" 2>/dev/null | \
       grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
   fi
-  
+
   # Fallback to ip-api.com if the first attempt failed (HTTP only - free tier doesn't support HTTPS)
   if [[ -z "$detected_tz" ]] && command -v curl >/dev/null 2>&1; then
     detected_tz=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
       grep -o '"timezone":"[^"]*"' | cut -d'"' -f4)
   fi
-  
+
   # If GeoIP failed, fall back to system detection
   if [[ -z "$detected_tz" ]]; then
     detected_tz=$(detect_timezone_system)
   fi
-  
+
   echo "$detected_tz"
 }
 
@@ -1022,7 +1023,7 @@ get_locale_for_country() {
 # Auto-detect locale using GeoIP + system detection
 detect_locale() {
   local detected_locale=""
-  
+
   # First, try system locale (the highest priority if set)
   if [[ -n "$LANG" && "$LANG" != "C" && "$LANG" != "POSIX" ]]; then
     detected_locale="$LANG"
@@ -1033,33 +1034,33 @@ detect_locale() {
       detected_locale="$system_locale"
     fi
   fi
-  
+
   # If no useful system locale, try GeoIP-based suggestion
   if [[ -z "$detected_locale" || "$detected_locale" == "C.UTF-8" ]]; then
     if command -v curl >/dev/null 2>&1; then
       local country_code
-      
+
       # Try ipinfo.io first (HTTPS, secure)
       country_code=$(curl -s --connect-timeout 5 --max-time 10 "https://ipinfo.io/json" 2>/dev/null | \
         grep -o '"country":"[^"]*"' | cut -d'"' -f4)
-      
+
       # Fallback to ip-api.com if the first attempt failed (HTTP only - free tier doesn't support HTTPS)
       if [[ -z "$country_code" ]]; then
         country_code=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | \
           grep -o '"countryCode":"[^"]*"' | cut -d'"' -f4)
       fi
-      
+
       if [[ -n "$country_code" ]]; then
         detected_locale=$(get_locale_for_country "$country_code")
       fi
     fi
   fi
-  
+
   # Final fallback
   if [[ -z "$detected_locale" ]]; then
     detected_locale="en_US.UTF-8"
   fi
-  
+
   echo "$detected_locale"
 }
 
@@ -1067,12 +1068,12 @@ detect_locale() {
 calculate_optimal_swap() {
   local ram_gb
   ram_gb=$(free -g | awk '/^Mem:/ {print $2}')
-  
+
   # Handle case where RAM is less than 1GB (shows as 0 in -g)
   if [[ $ram_gb -eq 0 ]]; then
     ram_gb=1
   fi
-  
+
   # Modern best practices for swap sizing
   if [[ $ram_gb -le 2 ]]; then
     # Low RAM systems: 2x RAM for stability
@@ -1081,7 +1082,7 @@ calculate_optimal_swap() {
     # Medium RAM systems: equal to RAM
     echo "${ram_gb}G"
   elif [[ $ram_gb -le 32 ]]; then
-    # High RAM systems: 4-8GB is sufficient
+    # High RAM systems: 4-8GB is enough
     echo "8G"
   else
     # Very high RAM systems: minimal swap needed
@@ -1093,13 +1094,13 @@ calculate_optimal_swap() {
 prompt_for_settings() {
   echo
   echo -e "${YELLOW}Configuration Setup:${NC}"
-  
+
   # Auto-detect system settings for defaults
   local detected_locale detected_timezone
   local user_password_confirm
   detected_locale=$(detect_locale)
   detected_timezone=$(detect_timezone)
-  
+
   # Prompt for all settings with loaded config or auto-detected defaults
   local input
   local default_locale="${locale:-$detected_locale}"
@@ -1107,32 +1108,32 @@ prompt_for_settings() {
   local default_keyboard="${keyboard_layout:-us}"
   local default_fullname="${user_fullname:-KDE User}"
   local default_username="${username:-user}"
-  
+
   # Locale (use loaded config or auto-detected default)
   read -r -p "Locale [$default_locale]: " input
   locale="${input:-$default_locale}"
-  
+
   # Timezone (use loaded config or auto-detected default)
   read -r -p "Timezone [$default_timezone]: " input
   timezone="${input:-$default_timezone}"
-  
+
   # Keyboard layout
   read -r -p "Keyboard layout [$default_keyboard]: " input
   keyboard_layout="${input:-$default_keyboard}"
-  
+
   # User full name
   read -r -p "User full name [$default_fullname]: " input
   user_fullname="${input:-$default_fullname}"
-  
+
   # Username
   read -r -p "Username [$default_username]: " input
   username="${input:-$default_username}"
-  
+
   # No password sudo option
   read -r -n 1 -p "  Add to passwordless sudo? (y/n): " sudo_nopasswd
   echo  # Move to next line after single character input
-  
-  # User password
+
+  # User password - CRITICAL FIX: Make user_password global by removing 'local'
   while true; do
     read -r -s -p "Password for $username: " user_password
     echo
@@ -1148,35 +1149,35 @@ prompt_for_settings() {
       echo "Passwords do not match. Please try again."
     fi
   done
-  
+
   # Hostname
   local default_hostname="${hostname:-kde-neon}"
   read -r -p "Hostname [$default_hostname]: " input
   hostname="${input:-$default_hostname}"
-  
+
   # Swap size with RAM-based optimal default
   local optimal_swap
   optimal_swap=$(calculate_optimal_swap)
   local default_swap="${swap_size:-$optimal_swap}"
   read -r -p "Swap file size [$default_swap]: " input
   swap_size="${input:-$default_swap}"
-  
+
   # Root filesystem
   local default_fs="${root_fs:-ext4}"
   read -r -p "Root filesystem [$default_fs]: " input
   root_fs="${input:-$default_fs}"
-  
+
   # Network config
   echo "Available network configurations:"
   echo "  dhcp    - Automatic IP configuration (recommended)"
   echo "  static  - Manual IP configuration"
   echo "  manual  - Manual network setup after installation"
-  
+
   while true; do
     local default_network="${network_config:-dhcp}"
     read -r -p "Network configuration [$default_network]: " input
     network_config="${input:-$default_network}"
-    
+
     case "$network_config" in
       dhcp|static|manual)
         break
@@ -1187,13 +1188,13 @@ prompt_for_settings() {
         ;;
     esac
   done
-  
+
   # Collect additional settings for static configuration
   if [[ "$network_config" == "static" ]]; then
     # Detect the currently active interface
     local current_iface
     current_iface=$(ip route | grep default | head -n1 | awk '{print $5}' 2>/dev/null || echo "")
-    
+
     while true; do
       echo "Static IP configuration:"
       local default_iface="${static_iface:-$current_iface}"
@@ -1201,7 +1202,7 @@ prompt_for_settings() {
       local default_netmask="${static_netmask:-255.255.255.0}"
       local default_gateway="${static_gateway:-192.168.1.1}"
       local default_dns="${static_dns:-8.8.8.8,8.8.4.4}"
-      
+
       if [[ -n "$default_iface" ]]; then
         read -r -p "Network interface [$default_iface]: " input
         static_iface="${input:-$default_iface}"
@@ -1216,7 +1217,7 @@ prompt_for_settings() {
       static_gateway="${input:-$default_gateway}"
       read -r -p "DNS servers [$default_dns]: " input
       static_dns="${input:-$default_dns}"
-      
+
       # Basic validation
       if [[ -z "$static_iface" || -z "$static_ip" || -z "$static_netmask" || -z "$static_gateway" ]]; then
         echo -e "${RED}Error: Interface name, IP address, netmask, and gateway are required for static configuration${NC}"
@@ -1227,22 +1228,22 @@ prompt_for_settings() {
       fi
     done
   fi
-  
+
   # Collect DNS settings for both DHCP and static (but not manual)
   if [[ "$network_config" != "manual" ]]; then
     echo "  DNS configuration:"
     local default_dns_suffix="${static_dns_suffix:-}"
-    
+
     if [[ -n "$default_dns_suffix" ]]; then
       read -r -p "  DNS suffix [$default_dns_suffix]: " input
       static_dns_suffix="${input:-$default_dns_suffix}"
     else
       read -r -p "  DNS suffix (optional, space-separated, e.g., local.lan corp.com): " static_dns_suffix
     fi
-    
+
     # Use suffix as fallback default for search if no saved search domain
     local default_domain_search="${static_domain_search:-$static_dns_suffix}"
-    
+
     if [[ -n "$default_domain_search" ]]; then
       read -r -p "  Domain search [$default_domain_search]: " input
       static_domain_search="${input:-$default_domain_search}"
@@ -1250,10 +1251,10 @@ prompt_for_settings() {
       read -r -p "  Domain search (optional, space-separated, e.g., local.lan example.com): " static_domain_search
     fi
   fi
-  
+
   echo
   echo -e "${GREEN}Configuration complete${NC}"
-  
+
   # Save configuration for future runs
   save_configuration
 }
@@ -1364,14 +1365,14 @@ phase3_system_installation() {
 
   # Mount root partition first
   execute_cmd "mount $root_part $install_root" "Mounting root partition"
-  
+
   # Create EFI mount point after root is mounted
   execute_cmd "mkdir -p $install_root/boot/efi" "Creating EFI mount point"
   execute_cmd "mount $efi_part $install_root/boot/efi" "Mounting EFI partition"
 
   # Find and mount an installation source (live filesystem)
   execute_cmd "mkdir -p /mnt/squashfs" "Creating squashfs mount point"
-  
+
   # Try to find the squashfs filesystem directly from a live system
   local squashfs_path=""
   if [[ -f "/run/live/medium/casper/filesystem.squashfs" ]]; then
@@ -1395,11 +1396,11 @@ phase3_system_installation() {
       fi
     done
   fi
-  
+
   if [[ -z "$squashfs_path" ]]; then
     error_exit "Could not find KDE Neon installation filesystem. Please ensure you're running from the KDE Neon live USB."
   fi
-  
+
   execute_cmd "mount -o loop $squashfs_path /mnt/squashfs" "Mounting squashfs filesystem from $squashfs_path"
 
   # Copy system files from squashfs (this will take several minutes)
@@ -1446,7 +1447,7 @@ fi
   elif [[ -f "/mnt/source/casper/vmlinuz" ]]; then
     kernel_source="/mnt/source/casper"
   fi
-  
+
   if [[ -n "$kernel_source" ]]; then
     # Find the actual kernel version from the installed system
     local kernel_version
@@ -1489,10 +1490,10 @@ phase4_bootloader_configuration() {
   execute_cmd "mount --bind /sys/firmware/efi/efivars $install_root/sys/firmware/efi/efivars" "Binding EFI variables"
 
   # Capture existing boot entries before GRUB installation
-  # This allows us to exclude our newly created entry from cleanup menu
+  # This allows us to exclude our newly created entry from a cleanup menu
   local pre_grub_entries
   pre_grub_entries=$(efibootmgr -v 2>/dev/null || true)
-  
+
   # Install GRUB
   execute_cmd "chroot $install_root grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id='KDE Neon' $drive" "Installing GRUB bootloader"
 
@@ -1504,7 +1505,7 @@ phase4_bootloader_configuration() {
 
   # Clean up conflicting EFI boot entries to avoid boot menu confusion
   log "INFO" "Cleaning up EFI boot entries to avoid conflicts with GRUB"
-  
+
   # Remove systemd-boot entries (Linux Boot Manager)
   if efibootmgr | grep -q "Linux Boot Manager"; then
     local systemd_boot_id
@@ -1513,7 +1514,7 @@ phase4_bootloader_configuration() {
       execute_cmd "efibootmgr -b $systemd_boot_id -B" "Removing systemd-boot entry (Boot$systemd_boot_id)"
     fi
   fi
-  
+
   # Check for existing KDE entries that don't reference our target drive
   check_existing_kde_entries "$target_drive"
 
@@ -1550,7 +1551,7 @@ phase5_system_configuration() {
   local system_locale="${locale:-en_US.UTF-8}"
   execute_cmd "chroot $install_root locale-gen $system_locale" "Generating locale"
   execute_cmd "chroot $install_root update-locale LANG=$system_locale" "Setting system locale"
-  
+
   # Disable automatic language pack installation
   execute_cmd "echo 'APT::Install-Recommends \"false\";' > $install_root/etc/apt/apt.conf.d/90-no-recommends" "Disabling automatic language pack installation"
 
@@ -1565,9 +1566,18 @@ phase5_system_configuration() {
   local system_username="${username:-user}"
   local system_fullname="${user_fullname:-KDE User}"
   execute_cmd "chroot $install_root useradd -m -s /bin/bash -c '$system_fullname' $system_username" "Creating user account"
-  execute_cmd "printf '%s:%s\n' '$system_username' '${user_password:-defaultpass}' | chroot $install_root chpasswd" "Setting user password"
+
+  # FIXED: Use the global user_password variable that was set in prompt_for_settings
+  if [[ -n "$user_password" ]]; then
+    execute_cmd "printf '%s:%s\n' '$system_username' '$user_password' | chroot $install_root chpasswd" "Setting user password"
+  else
+    # Fallback if somehow the password wasn't set (shouldn't happen)
+    log "ERROR" "User password was not set properly, using default"
+    execute_cmd "printf '%s:%s\n' '$system_username' 'changeme' | chroot $install_root chpasswd" "Setting default user password"
+  fi
+
   execute_cmd "chroot $install_root usermod -aG sudo $system_username" "Adding user to sudo group"
-  
+
   # Create a no-password sudoers file if requested
   if [[ "${sudo_nopasswd:-n}" =~ ^[Yy]$ ]]; then
     execute_cmd "echo '$system_username ALL=(ALL) NOPASSWD:ALL' | tee $install_root/etc/sudoers.d/$system_username >/dev/null" "Configuring passwordless sudo"
@@ -1610,7 +1620,7 @@ main_installation() {
 
   log "INFO" "Installation completed successfully!"
   log "INFO" "System is ready to reboot"
-  
+
   # Display a completion message to the user
   echo
   echo -e "${GREEN}🎉 KDE Neon Installation Complete! 🎉${NC}"
@@ -1654,6 +1664,9 @@ main() {
   debug=false
   show_win=false
   target_drive=""
+  # Initialize password and sudo variables as global
+  user_password=""
+  sudo_nopasswd="n"
 
   if [[ ${BASH_SOURCE[0]} != "${0}" ]]; then
     exit 0
@@ -1674,13 +1687,13 @@ main() {
 
   # Initialize logging and cleanup old logs
   mkdir -p "$(dirname "$log_file")"
-  
+
   # Delete logs older than 7 days
   if [[ -d "$(dirname "$log_file")" ]]; then
     find "$(dirname "$log_file")" -name "kde-install-*.log" -type f -mtime +7 -delete 2>/dev/null || true
   fi
 
-  # Display welcome banner  
+  # Display welcome banner
   echo "========================================================="
   echo "              KDE Neon Installer v$VERSION"
   echo "           Automated Installation System"
@@ -1695,7 +1708,7 @@ main() {
   echo "    WARNING: Target drive will be completely erased"
   echo "========================================================="
   echo
-  
+
   log "INFO" "KDE Neon Automated Installer started"
   log "INFO" "Log file: $log_file"
 
@@ -1711,7 +1724,7 @@ main() {
     echo "The system installation target directory $install_root already exists and contains data."
     echo "This appears to be from a previous installation attempt."
     echo ""
-    
+
     # Check if anything is mounted in the installation root
     if mount | grep -q "$install_root"; then
       echo "Previous active mounts needed by script are being unmounted..."
@@ -1724,7 +1737,7 @@ main() {
         echo "[DRY-RUN] Would unmount filesystems mounted in $install_root"
       fi
     fi
-    
+
     echo "Contents that will be removed:"
     if [[ $dry_run == "false" ]]; then
       find "$install_root" -maxdepth 1 -type f -o -type d | head -10
