@@ -855,6 +855,11 @@ load_configuration() {
       validation_errors+=("Invalid username: $username (must start with letter, lowercase, max 32 chars)")
     fi
     
+    # Validate sudo_nopasswd format
+    if [[ -n "$sudo_nopasswd" && ! "$sudo_nopasswd" =~ ^[YyNn]$ ]]; then
+      validation_errors+=("Invalid sudo_nopasswd: $sudo_nopasswd (must be y, Y, n, or N)")
+    fi
+    
     # Validate hostname format
     if [[ -n "$hostname" && ! "$hostname" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}[a-zA-Z0-9]?$ ]]; then
       validation_errors+=("Invalid hostname: $hostname (invalid format)")
@@ -911,6 +916,7 @@ load_configuration() {
     echo "  Keyboard Layout: ${keyboard_layout:-us}"
     echo "  User Full Name: ${user_fullname:-KDE User}"
     echo "  Username: ${username:-user}"
+    echo "  Passwordless Sudo: ${sudo_nopasswd:-n}"
     echo "  Hostname: ${hostname:-kde-neon}"
     echo "  Swap Size: ${swap_size:-4G}"
     echo "  Root Filesystem: ${root_fs:-ext4}"
@@ -1133,23 +1139,6 @@ prompt_for_settings() {
   read -r -n 1 -p "  Add to passwordless sudo? (y/n): " sudo_nopasswd
   echo  # Move to next line after single character input
 
-  # User password - CRITICAL FIX: Make user_password global by removing 'local'
-  while true; do
-    read -r -s -p "Password for $username: " user_password
-    echo
-    read -r -s -p "Confirm password: " user_password_confirm
-    echo
-    if [[ "$user_password" == "$user_password_confirm" ]]; then
-      if [[ ${#user_password} -ge 6 ]]; then
-        break
-      else
-        echo "Password must be at least 6 characters long."
-      fi
-    else
-      echo "Passwords do not match. Please try again."
-    fi
-  done
-
   # Hostname
   local default_hostname="${hostname:-kde-neon}"
   read -r -p "Hostname [$default_hostname]: " input
@@ -1279,6 +1268,7 @@ user_fullname="${user_fullname:-KDE User}"
 username="${username:-user}"
 # Password is not stored in config for security - always prompt fresh
 hostname="${hostname:-kde-neon}"
+sudo_nopasswd="${sudo_nopasswd:-n}"
 
 # Storage settings with dynamic swap sizing
 swap_size="${swap_size:-$(calculate_optimal_swap)}"
@@ -1568,12 +1558,27 @@ phase5_system_configuration() {
   execute_cmd "chroot $install_root useradd -m -s /bin/bash -c '$system_fullname' $system_username" "Creating user account"
 
   # FIXED: Use the global user_password variable that was set in prompt_for_settings
-  if [[ -n "$user_password" ]]; then
+  if [[ -n "${user_password:-}" ]]; then
     execute_cmd "printf '%s:%s\n' '$system_username' '$user_password' | chroot $install_root chpasswd" "Setting user password"
   else
-    # Fallback if somehow the password wasn't set (shouldn't happen)
-    log "ERROR" "User password was not set properly, using default"
-    execute_cmd "printf '%s:%s\n' '$system_username' 'changeme' | chroot $install_root chpasswd" "Setting default user password"
+    # Prompt for password if not set
+    log "INFO" "Prompting for user password during installation"
+    while true; do
+      read -r -s -p "  Password for $system_username: " user_password
+      echo
+      read -r -s -p "  Confirm password: " user_password_confirm
+      echo
+      if [[ "$user_password" == "$user_password_confirm" ]]; then
+        if [[ ${#user_password} -ge 6 ]]; then
+          break
+        else
+          echo "Password must be at least 6 characters long."
+        fi
+      else
+        echo "Passwords do not match. Please try again."
+      fi
+    done
+    execute_cmd "printf '%s:%s\n' '$system_username' '$user_password' | chroot $install_root chpasswd" "Setting user password"
   fi
 
   execute_cmd "chroot $install_root usermod -aG sudo $system_username" "Adding user to sudo group"
