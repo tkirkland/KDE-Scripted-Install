@@ -56,7 +56,7 @@ The installer follows a structured approach:
 - Dry-run mode for testing
 - User account creation with password validation
 - Network configuration (DHCP, static, manual)
-- Swap file creation with RAM-based sizing
+- Dynamic swap file sizing following modern best practices (≤2GB RAM: 2x, 2-8GB: equal, 8-32GB: 8GB, ≥32GB: 4GB)
 
 **System Integration:**
 - KDE Neon-specific package cleanup
@@ -74,8 +74,8 @@ The installer includes robust validation for configuration files:
 - Binary data detection in text files
 
 **Required Variables:**
-- `target_drive`, `network_config`, `locale`, `timezone`
-- `username`, `hostname`, filesystem and swap settings
+- `network_config`, `locale`, `timezone` (target_drive detected dynamically)
+- `username`, `hostname`, filesystem and swap settings (swap auto-calculated from RAM)
 
 **Format Validation:**
 - Drive paths: `/dev/nvmeXnY` pattern matching

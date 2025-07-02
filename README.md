@@ -95,7 +95,7 @@ The comprehensive installer follows a structured 5-phase approach:
 - **Boot System**: UEFI-only (no legacy BIOS)
 - **Storage**: NVMe drives only (`/dev/nvmeXXX`)
 - **Security**: UEFI Secure Boot compatible
-- **Memory**: Minimum 4GB RAM (affects swap file sizing)
+- **Memory**: Minimum 1GB RAM (dynamic swap file sizing based on available RAM)
 
 ### Software Dependencies
 - KDE Neon live environment
@@ -106,7 +106,7 @@ The comprehensive installer follows a structured 5-phase approach:
 ### Supported Configurations
 - **Partitioning**: Simple 2-partition scheme (EFI + root)
 - **Filesystem**: ext4 for root, FAT32 for EFI
-- **Swap**: File-based swap (not partition)
+- **Swap**: File-based swap with RAM-based dynamic sizing (not partition)
 - **Network**: systemd-networkd configuration
 - **Boot**: Single-boot or dual-boot with Windows detection
 
@@ -118,7 +118,7 @@ On first run, the installer prompts for:
 - User account information
 - Locale and timezone settings
 - Network configuration preferences
-- Swap file sizing options
+- Swap file sizing (with intelligent RAM-based defaults)
 
 ### Configuration Persistence
 Settings are saved to `install.conf` in the script directory:
@@ -133,7 +133,7 @@ username=user
 hostname=kde-neon
 
 [storage]
-swap_size=8G
+swap_size=8G  # Auto-calculated: ≤2GB RAM=2x, 2-8GB=equal, 8-32GB=8GB, ≥32GB=4GB
 filesystem=ext4
 ```
 

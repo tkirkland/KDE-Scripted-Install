@@ -1064,6 +1064,32 @@ detect_locale() {
   echo "$detected_locale"
 }
 
+# Calculate optimal swap size based on available RAM
+calculate_optimal_swap() {
+  local ram_gb
+  ram_gb=$(free -g | awk '/^Mem:/ {print $2}')
+  
+  # Handle case where RAM is less than 1GB (shows as 0 in -g)
+  if [[ $ram_gb -eq 0 ]]; then
+    ram_gb=1
+  fi
+  
+  # Modern best practices for swap sizing
+  if [[ $ram_gb -le 2 ]]; then
+    # Low RAM systems: 2x RAM for stability
+    echo "$((ram_gb * 2))G"
+  elif [[ $ram_gb -le 8 ]]; then
+    # Medium RAM systems: equal to RAM
+    echo "${ram_gb}G"
+  elif [[ $ram_gb -le 32 ]]; then
+    # High RAM systems: 4-8GB is sufficient
+    echo "8G"
+  else
+    # Very high RAM systems: minimal swap needed
+    echo "4G"
+  fi
+}
+
 # Interactive prompts for configuration settings
 prompt_for_settings() {
   echo
@@ -1129,8 +1155,10 @@ prompt_for_settings() {
   read -r -p "Hostname [$default_hostname]: " input
   hostname="${input:-$default_hostname}"
   
-  # Swap size
-  local default_swap="${swap_size:-4G}"
+  # Swap size with RAM-based optimal default
+  local optimal_swap
+  optimal_swap=$(calculate_optimal_swap)
+  local default_swap="${swap_size:-$optimal_swap}"
   read -r -p "Swap file size [$default_swap]: " input
   swap_size="${input:-$default_swap}"
   
@@ -1252,8 +1280,8 @@ username="${username:-user}"
 # Password is not stored in config for security - always prompt fresh
 hostname="${hostname:-kde-neon}"
 
-# Storage settings
-swap_size="${swap_size:-4G}"
+# Storage settings with dynamic swap sizing
+swap_size="${swap_size:-$(calculate_optimal_swap)}"
 root_fs="${root_fs:-ext4}"
 
 # Network settings
