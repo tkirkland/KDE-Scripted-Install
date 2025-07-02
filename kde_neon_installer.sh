@@ -331,7 +331,6 @@ detect_windows() {
 # Check existing KDE entries and prompt user about non-target-drive entries
 check_existing_kde_entries() {
   local target_drive="$1"
-  local pre_grub_entries="$2"
   local target_efi_partition="${target_drive}p1"
   
   log "INFO" "Checking for existing KDE boot entries..."
@@ -1516,7 +1515,7 @@ phase4_bootloader_configuration() {
   fi
   
   # Check for existing KDE entries that don't reference our target drive
-  check_existing_kde_entries "$target_drive" "$pre_grub_entries"
+  check_existing_kde_entries "$target_drive"
 
   # Update fstab
   if [[ $dry_run == "true"   ]]; then
