@@ -1289,6 +1289,61 @@ EOF
   fi
 }
 
+# Execute addon scripts from ./addons directory
+execute_addon_scripts() {
+  local addon_dir="./addons"
+  local script_count=0
+  local addon_scripts=()
+  
+  # Check if addons directory exists
+  if [[ ! -d "$addon_dir" ]]; then
+    return 0  # No addons directory, nothing to do
+  fi
+  
+  # Find all .sh files in addons directory
+  while IFS= read -r -d '' script; do
+    addon_scripts+=("$script")
+    ((script_count++))
+  done < <(find "$addon_dir" -name "*.sh" -type f -print0 2>/dev/null)
+  
+  # If no .sh files found, return
+  if [[ $script_count -eq 0 ]]; then
+    log "INFO" "No addon scripts found in $addon_dir"
+    return 0
+  fi
+  
+  # Sort scripts numerically by filename
+  IFS=$'\n' addon_scripts=($(sort -V <<< "${addon_scripts[*]}"))
+  
+  echo
+  dry_echo "=== Executing Addon Scripts ($script_count found) ==="
+  
+  # Execute each script in order
+  for script in "${addon_scripts[@]}"; do
+    local script_name
+    script_name=$(basename "$script")
+    
+    # Make script executable
+    execute_cmd "chmod +x '$script'" "Making addon script executable: $script_name"
+    
+    # Execute the script with the install root as first argument
+    log "INFO" "Executing addon script: $script_name"
+    if [[ $dry_run == "true" ]]; then
+      echo "[DRY-RUN] Would execute addon script: $script with install_root=$install_root"
+    else
+      echo "  Executing addon script: $script_name..."
+      if ! bash "$script" "$install_root" >> "$log_file" 2>&1; then
+        log "ERROR" "Addon script failed: $script_name"
+        log "WARN" "Continuing with installation despite addon script failure"
+      else
+        log "INFO" "Addon script completed successfully: $script_name"
+      fi
+    fi
+  done
+  
+  log "INFO" "Addon script execution completed"
+}
+
 # Phase 1: System preparation, validation, and package installation
 phase1_system_preparation() {
   echo
@@ -1608,6 +1663,8 @@ phase5_system_configuration() {
   execute_cmd "chroot $install_root apt-get -qq -y autoremove --purge >/dev/null 2>&1" "Cleaning up orphaned packages"
   execute_cmd "chroot $install_root apt-get -qq -y autoclean >/dev/null 2>&1" "Cleaning package cache"
 
+  # Execute addon scripts if available
+  execute_addon_scripts
 
   # Initramfs was already updated in Phase 4 after GRUB configuration
 
