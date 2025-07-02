@@ -72,13 +72,14 @@ execute_cmd() {
     return 0
   fi
 
-  if [[ -n $description   ]]; then
-    log "INFO" "$description"
+  if [[ -n $description ]]; then
+    echo "  $description..."
   fi
 
   log "DEBUG" "Executing: $cmd"
 
-  if ! bash -c "$cmd" 2>&1 | tee -a "$log_file"; then
+  if ! bash -c "$cmd" >> "$log_file" 2>&1; then
+    log "ERROR" "Failed: $description"
     error_exit "Command failed: $cmd"
   fi
 }
@@ -1015,6 +1016,9 @@ prompt_for_settings() {
   
   echo
   echo -e "${GREEN}Configuration complete${NC}"
+  
+  # Save configuration for future runs
+  save_configuration
 }
 
 # Save the current installation configuration to file
