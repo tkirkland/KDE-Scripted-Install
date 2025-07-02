@@ -1256,7 +1256,32 @@ save_configuration() {
   cat > "$config_file" << EOF
 # KDE Neon Installation Configuration
 # Generated: $(date)
+orig:
+IFS=$'\n' addon_scripts=($(sort -V <<< "${addon_scripts[*]}"))
 
+claude sonnet:
+mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
+
+claude opus:
+mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
+
+chat gpt:
+mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
+
+deepseek 70b:
+IFS=$'\n' mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
+
+devstral:
+mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
+
+qwen32b:
+mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
+
+o4 mini:
+mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
+
+deepsook coder:
+mapfile -t addon_scripts < <(sort -V <<< "${addon_scripts[*]}")
 # System settings
 locale="${locale:-en_US.UTF-8}"
 timezone="${timezone:-$(detect_timezone)}"
@@ -1289,18 +1314,18 @@ EOF
   fi
 }
 
-# Execute addon scripts from ./addons directory
+# Execute addon scripts from the./addons directory
 execute_addon_scripts() {
   local addon_dir="./addons"
   local script_count=0
   local addon_scripts=()
   
-  # Check if addons directory exists
+  # Check if the addons directory exists
   if [[ ! -d "$addon_dir" ]]; then
     return 0  # No addons directory, nothing to do
   fi
   
-  # Find all .sh files in addons directory
+  # Find all .sh files in the addons directory
   while IFS= read -r -d '' script; do
     addon_scripts+=("$script")
     ((script_count++))
@@ -1313,8 +1338,8 @@ execute_addon_scripts() {
   fi
   
   # Sort scripts numerically by filename
-  IFS=$'\n' addon_scripts=($(sort -V <<< "${addon_scripts[*]}"))
-  
+  mapfile -t addon_scripts < <(printf '%s\n' "${addon_scripts[@]}" | sort -V)
+
   echo
   dry_echo "=== Executing Addon Scripts ($script_count found) ==="
   
@@ -1326,7 +1351,7 @@ execute_addon_scripts() {
     # Make script executable
     execute_cmd "chmod +x '$script'" "Making addon script executable: $script_name"
     
-    # Execute the script with the install root as first argument
+    # Execute the script with the installation root as the first argument
     log "INFO" "Executing addon script: $script_name"
     if [[ $dry_run == "true" ]]; then
       echo "[DRY-RUN] Would execute addon script: $script with install_root=$install_root"
