@@ -336,13 +336,13 @@ check_existing_kde_entries() {
   
   log "INFO" "Checking for existing KDE boot entries..."
   
-  # Use pre-GRUB entries to exclude our newly created entry
+  # Get current entries and exclude our newly created "KDE Neon" entry
+  local all_kde_entries
+  all_kde_entries=$(efibootmgr -v | grep -E "(KDE|neon)" || true)
+  
+  # Filter out the newly created entry (bootloader-id "KDE Neon")
   local kde_entries_info
-  if [[ -n "$pre_grub_entries" ]]; then
-    kde_entries_info=$(echo "$pre_grub_entries" | grep -E "(KDE|neon)" || true)
-  else
-    kde_entries_info=$(efibootmgr -v | grep -E "(KDE|neon)" || true)
-  fi
+  kde_entries_info=$(echo "$all_kde_entries" | grep -v "KDE Neon" || true)
   
   if [[ -z "$kde_entries_info" ]]; then
     log "INFO" "No existing KDE boot entries found"
@@ -1538,7 +1538,7 @@ phase5_system_configuration() {
   local system_username="${username:-user}"
   local system_fullname="${user_fullname:-KDE User}"
   execute_cmd "chroot $install_root useradd -m -s /bin/bash -c '$system_fullname' $system_username" "Creating user account"
-  execute_cmd "echo '$system_username:${user_password:-defaultpass}' | chroot $install_root chpasswd" "Setting user password"
+  execute_cmd "printf '%s:%s\n' '$system_username' '${user_password:-defaultpass}' | chroot $install_root chpasswd" "Setting user password"
   execute_cmd "chroot $install_root usermod -aG sudo $system_username" "Adding user to sudo group"
   
   # Create a no-password sudoers file if requested
