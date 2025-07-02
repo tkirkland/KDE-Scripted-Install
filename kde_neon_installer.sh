@@ -408,27 +408,28 @@ check_existing_kde_entries() {
     echo ""
     
     if [[ $dry_run == "false" ]]; then
-      local remove_others
-      read -p "Do you want to remove any of these entries? [y/N]: " -r remove_others
-      if [[ $remove_others =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "Select entries to remove (enter boot numbers separated by spaces, or 'none'):"
-        local i
-        for i in "${!entry_details[@]}"; do
-          echo "  $((i+1)). ${entry_details[$i]}"
-        done
-        echo ""
-        local selected_entries
-        read -p "Enter boot numbers to remove (e.g., 0001 0003): " -r selected_entries
+      echo ""
+      echo "To remove boot entries, enter list numbers separated by spaces (or 'none' to keep all):"
+      local i
+      for i in "${!entry_details[@]}"; do
+        echo "  $((i+1)). ${entry_details[$i]}"
+      done
+      echo ""
+      local selected_entries
+      read -p "Enter numbers to remove (e.g., 1 3): " -r selected_entries
         
         if [[ "$selected_entries" != "none" ]] && [[ -n "$selected_entries" ]]; then
-          local boot_num
-          for boot_num in $selected_entries; do
-            # Validate a boot number format
-            if [[ "$boot_num" =~ ^[0-9A-Fa-f]{4}$ ]]; then
+          local list_num
+          for list_num in $selected_entries; do
+            # Validate list number and convert to array index
+            if [[ "$list_num" =~ ^[0-9]+$ ]] && (( list_num >= 1 && list_num <= ${#entry_details[@]} )); then
+              local array_index=$((list_num - 1))
+              local boot_entry="${entry_details[$array_index]}"
+              # Extract boot number from the entry (Boot#### format)
+              local boot_num=$(echo "$boot_entry" | grep -o 'Boot[0-9A-Fa-f]\{4\}' | sed 's/Boot//')
               execute_cmd "efibootmgr -b $boot_num -B" "Removing selected KDE entry (Boot$boot_num)"
             else
-              log "WARN" "Invalid boot number format: $boot_num (expected 4-digit hex)"
+              log "WARN" "Invalid selection: $list_num (must be 1-${#entry_details[@]})"
             fi
           done
         fi
@@ -1291,7 +1292,7 @@ phase2_partitioning() {
   local drive="$target_drive"
 
   # Unmount any existing partitions
-  execute_cmd "umount ${drive}p* 2>/dev/null || true" "Unmounting existing partitions"
+  execute_cmd "umount ${drive}p* 2>/dev/null || true"
 
   # Create a new GPT partition table
   execute_cmd "parted -s $drive mklabel gpt" "Creating GPT partition table"
