@@ -1249,7 +1249,7 @@ keyboard_layout="${keyboard_layout:-us}"
 # User settings
 user_fullname="${user_fullname:-KDE User}"
 username="${username:-user}"
-user_password_hash="$(echo -n "${user_password:-}" | sha256sum | cut -d' ' -f1)"
+# Password is not stored in config for security - always prompt fresh
 hostname="${hostname:-kde-neon}"
 
 # Storage settings
@@ -1737,7 +1737,7 @@ main() {
   echo ""
   echo -e "${YELLOW}After installation:${NC}"
   echo "  • Your computer will restart into KDE Neon"
-  echo "  • You'll need to set up user accounts and preferences"
+  echo "  • Your user account will be ready to use"
   echo "  • Any data on $target_drive will be permanently gone"
   echo
 
