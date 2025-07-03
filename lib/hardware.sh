@@ -124,35 +124,35 @@ get_drive_info() {
 #   Selected drive path via stdout
 #######################################
 display_drive_selection() {
-  local -n available_drives=$1
-  local -n windows_drives=$2
-  local -n safe_drives=$3
+  local -n available_drives_ref=$1
+  local -n windows_drives_ref=$2
+  local -n safe_drives_ref=$3
   
   ui_section "Drive Selection"
   
   # Show Windows detection results if any found
-  if [[ ${#windows_drives[@]} -gt 0 ]]; then
+  if [[ ${#windows_drives_ref[@]} -gt 0 ]]; then
     ui_status "warn" "Windows installations detected on some drives"
     
     if [[ "${show_win:-false}" == "true" ]]; then
       ui_status "info" "All drives shown (--show-win enabled)"
       echo
-      ui_field "Windows drives" "${windows_drives[*]}"
-      ui_field "Available drives" "${available_drives[*]}"
+      ui_field "Windows drives" "${windows_drives_ref[*]}"
+      ui_field "Available drives" "${available_drives_ref[*]}"
     elif [[ "${force_mode:-false}" == "true" ]]; then
       ui_status "warn" "Force mode enabled - showing all drives"
       echo
-      ui_field "Windows drives" "${windows_drives[*]}"
-      ui_field "All drives" "${available_drives[*]}"
+      ui_field "Windows drives" "${windows_drives_ref[*]}"
+      ui_field "All drives" "${available_drives_ref[*]}"
     else
       ui_status "info" "Windows drives hidden for safety"
       echo
-      ui_field "Windows drives" "${windows_drives[*]} (hidden)"
-      ui_field "Safe drives" "${safe_drives[*]}"
+      ui_field "Windows drives" "${windows_drives_ref[*]} (hidden)"
+      ui_field "Safe drives" "${safe_drives_ref[*]}"
     fi
   else
     ui_status "success" "No Windows installations detected"
-    ui_field "Available drives" "${available_drives[*]}"
+    ui_field "Available drives" "${available_drives_ref[*]}"
   fi
   
   echo
