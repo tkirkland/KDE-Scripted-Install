@@ -78,7 +78,7 @@ parse_arguments() {
         shift
         ;;
       --debug)
-        # shellcheck disable=SC2034  # Used by core module for debug logging
+        # shellcheck disable=SC2034
         debug=true
         export debug=true
         shift
@@ -1122,18 +1122,18 @@ prompt_for_settings() {
     local default_dns_suffix="${static_dns_suffix:-}"
 
     if [[ -n "$default_dns_suffix" ]]; then
-      static_dns_suffix=$(ui_input "DNS suffix" "$default_dns_suffix")
+      static_dns_suffix=$(ui_input "DNS routing domains (domains to route to these DNS servers)" "$default_dns_suffix")
     else
-      static_dns_suffix=$(ui_input "DNS suffix (optional, space-separated)" "")
+      static_dns_suffix=$(ui_input "DNS routing domains (optional, space-separated, e.g. corp.example.com)" "")
     fi
 
     # Use suffix as fallback default for search if no saved search domain
     local default_domain_search="${static_domain_search:-$static_dns_suffix}"
 
     if [[ -n "$default_domain_search" ]]; then
-      static_domain_search=$(ui_input "Domain search" "$default_domain_search")
+      static_domain_search=$(ui_input "Domain search suffixes (for hostname completion, e.g. home.local)" "$default_domain_search")
     else
-      static_domain_search=$(ui_input "Domain search (optional, space-separated)" "")
+      static_domain_search=$(ui_input "Domain search suffixes (optional, space-separated, e.g. home.local lan.local)" "")
     fi
   fi
 
@@ -1255,6 +1255,16 @@ phase1_system_preparation() {
 
   # Install required packages
   execute_cmd "apt-get -qq install -y parted gdisk dosfstools e2fsprogs" "Installing partitioning tools"
+
+  # Capture existing EFI boot entries before GRUB installation
+  # This will be used later to differentiate between pre-existing entries and the new one
+  if command -v efibootmgr >/dev/null 2>&1; then
+    pre_install_efi_entries=$(efibootmgr 2>/dev/null | grep -i "KDE" || true)
+    log "INFO" "Captured pre-installation EFI entries for comparison"
+  else
+    pre_install_efi_entries=""
+    log "WARN" "efibootmgr not available, cannot capture pre-installation entries"
+  fi
 
   log "INFO" "Phase 1 completed successfully"
 }
@@ -1645,6 +1655,8 @@ main() {
   debug=false
   user_password=""
   sudo_nopasswd="n"
+  # shellcheck disable=SC2034  # Used by validation functions for EFI entry comparison
+  pre_install_efi_entries=""
 
   if [[ ${BASH_SOURCE[0]} != "${0}" ]]; then
     exit 0

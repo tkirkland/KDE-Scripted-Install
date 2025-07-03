@@ -80,24 +80,31 @@ UseDNS=yes
 UseNTP=yes
 EOF" "Creating DHCP network configuration"
 
-  # Add domain search entries if provided
+  # Configure DNS domains properly (search domains and routing domains are different)
+  local domains_list=""
+  
+  # Add search domains (without ~ prefix) - used for hostname completion
   if [[ -n "${static_domain_search:-}" ]]; then
-    ui_status "info" "Adding domain search configuration"
-    local domain
-    for domain in $static_domain_search; do
-      execute_cmd "echo 'Domains=$domain' >> '$network_config_dir/20-wired.network'" \
-                 "Adding domain search: $domain"
-    done
+    ui_status "info" "Adding search domains: $static_domain_search"
+    domains_list="$static_domain_search"
   fi
   
-  # Add DNS suffix entries if provided
+  # Add DNS routing domains (with ~ prefix) - used for DNS query routing
   if [[ -n "${static_dns_suffix:-}" ]]; then
-    ui_status "info" "Adding DNS suffix configuration"
-    local suffix
-    for suffix in $static_dns_suffix; do
-      execute_cmd "echo 'Domains=$suffix' >> '$network_config_dir/20-wired.network'" \
-                 "Adding DNS suffix: $suffix"
-    done
+    ui_status "info" "Adding DNS routing domains: $static_dns_suffix"
+    local routing_domains
+    routing_domains=$(echo "$static_dns_suffix" | sed 's/[[:space:]]\+/ ~/g; s/^/~/')
+    if [[ -n "$domains_list" ]]; then
+      domains_list="$domains_list $routing_domains"
+    else
+      domains_list="$routing_domains"
+    fi
+  fi
+  
+  # Add the combined domains configuration
+  if [[ -n "$domains_list" ]]; then
+    execute_cmd "echo 'Domains=$domains_list' >> '$network_config_dir/20-wired.network'" \
+               "Adding domains configuration"
   fi
 
   ui_status "success" "DHCP network configuration completed"
@@ -183,24 +190,31 @@ UseDNS=no
 UseNTP=no
 EOF" "Creating static network configuration"
 
-  # Add domain search entries if provided
+  # Configure DNS domains properly (search domains and routing domains are different)
+  local domains_list=""
+  
+  # Add search domains (without ~ prefix) - used for hostname completion
   if [[ -n "${static_domain_search:-}" ]]; then
-    ui_status "info" "Adding domain search configuration"
-    local domain
-    for domain in $static_domain_search; do
-      execute_cmd "echo 'Domains=$domain' >> '$network_config_dir/20-wired.network'" \
-                 "Adding domain search: $domain"
-    done
+    ui_status "info" "Adding search domains: $static_domain_search"
+    domains_list="$static_domain_search"
   fi
   
-  # Add DNS suffix entries if provided
+  # Add DNS routing domains (with ~ prefix) - used for DNS query routing
   if [[ -n "${static_dns_suffix:-}" ]]; then
-    ui_status "info" "Adding DNS suffix configuration"
-    local suffix
-    for suffix in $static_dns_suffix; do
-      execute_cmd "echo 'Domains=$suffix' >> '$network_config_dir/20-wired.network'" \
-                 "Adding DNS suffix: $suffix"
-    done
+    ui_status "info" "Adding DNS routing domains: $static_dns_suffix"
+    local routing_domains
+    routing_domains=$(echo "$static_dns_suffix" | sed 's/[[:space:]]\+/ ~/g; s/^/~/')
+    if [[ -n "$domains_list" ]]; then
+      domains_list="$domains_list $routing_domains"
+    else
+      domains_list="$routing_domains"
+    fi
+  fi
+  
+  # Add the combined domains configuration
+  if [[ -n "$domains_list" ]]; then
+    execute_cmd "echo 'Domains=$domains_list' >> '$network_config_dir/20-wired.network'" \
+               "Adding domains configuration"
   fi
 
   ui_status "success" "Static network configuration completed"

@@ -251,12 +251,29 @@ detect_windows() {
 #######################################
 check_existing_kde_entries() {
   local target_drive="$1"
-  local kde_entries
-  kde_entries=$(efibootmgr | grep -i "KDE" || true)
+  local current_kde_entries
+  current_kde_entries=$(efibootmgr | grep -i "KDE" || true)
   
-  if [[ -n "$kde_entries" ]]; then
+  # Use differential comparison: only show entries that existed before installation
+  local pre_existing_entries=""
+  if [[ -n "${pre_install_efi_entries:-}" ]]; then
+    # Only process entries that were present before installation
+    pre_existing_entries="$pre_install_efi_entries"
+    log "INFO" "Using pre-installation EFI entries for comparison"
+  else
+    # Fallback: if no pre-installation snapshot, assume all current entries are pre-existing
+    # This preserves the old behavior for compatibility
+    pre_existing_entries="$current_kde_entries"
+    log "WARN" "No pre-installation snapshot available, using current entries"
+  fi
+  
+  log "DEBUG" "Pre-install entries: '$pre_install_efi_entries'"
+  log "DEBUG" "Current entries: '$current_kde_entries'"
+  log "DEBUG" "Processing entries: '$pre_existing_entries'"
+  
+  if [[ -n "$pre_existing_entries" ]]; then
     ui_section "Existing KDE Boot Entries Found"
-    echo "$kde_entries"
+    echo "$pre_existing_entries"
     echo
     
     # Parse entries and separate by drive
@@ -278,7 +295,7 @@ check_existing_kde_entries() {
           other_entries+=("$boot_num:$line")
         fi
       fi
-    done <<< "$kde_entries"
+    done <<< "$pre_existing_entries"
     
     # Handle entries on target drive (automatic removal)
     if [[ ${#target_entries[@]} -gt 0 ]]; then

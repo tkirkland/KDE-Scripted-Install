@@ -257,7 +257,17 @@ select_target_drive() {
     echo
     while true; do
       local selection
-      selection=$(ui_input "Select drive number (1-${#selectable_drives[@]})" "1")
+      # Use direct read instead of ui_input function
+      echo -n -e "→ Select drive number (1-${#selectable_drives[@]}) [1]: "
+      read -r selection
+      
+      # Use default if empty
+      if [[ -z "$selection" ]]; then
+        selection="1"
+      fi
+      
+      # Trim whitespace and sanitize input
+      selection="${selection//[[:space:]]/}"
       
       if [[ "$selection" =~ ^[0-9]+$ ]] && 
          [[ "$selection" -ge 1 ]] && 
